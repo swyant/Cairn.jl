@@ -1,5 +1,6 @@
 using Cairn, Molly
 using PotentialLearning
+using AtomsCalculators
 using Unitful
 using StaticArrays
 using SpecialPolynomials
@@ -58,9 +59,9 @@ using Test
 
 
     ## test ConfigurationData quantities 
-    e = potential_energy(sysc, pce)
+    e = AtomsCalculators.potential_energy(sysc, pce)
     edata = Energy(e)
-    f = forces(sysc, pce)
+    f = AtomsCalculators.forces(sysc, pce)
     fdata = Forces(f)
     ed = compute_local_descriptors(sysc, pce) # populates sysa.data
     edescr = LocalDescriptors(ed)
