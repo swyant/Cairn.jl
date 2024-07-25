@@ -47,6 +47,7 @@ include("simulators/simulators.jl")
 include("triggers/triggers.jl")
 
 include("training/training.jl")
+include("training/committee_learning_problems.jl")
 
 include("loggers/loggers.jl")
 
