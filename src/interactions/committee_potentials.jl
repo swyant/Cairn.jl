@@ -25,15 +25,15 @@ struct CommitteePotential{P}
                 members::Vector{P},
                 leader::Integer,
                 eunits::Union{NOUNIT_T, Unitful.Units{UE,E_DIM,nothing},Unitful.Units{UE,EN_DIM,nothing}},
-                lunits::Union{NOUNIT_T, Unitful.Units{UL,L_DIM,nothing}}) where {P, UE, UL}  
+                lunits::Union{NOUNIT_T, Unitful.Units{UL,L_DIM,nothing}}) where {P, UE, UL}
 
         if !checkbounds(Bool, members, leader)
             error("leader index is out of bounds with respect to members array")
         end
         return new{P}(members,leader,eunits,lunits)
     end
-end 
-  
+end
+
 function CommitteePotential(members::Vector{P},
                             leader=1;
                             energy_units=u"eV",
@@ -71,4 +71,35 @@ function AtomsCalculators.forces(sys::AbstractSystem,
   end
 
   forces
+end
+
+function compute_all_energies(sys::AbstractSystem, cmte_pot::CommitteePotential)
+  # This manual type stuff is only needed so long as IP.jl doesn't satistfy the AtomsCalculators interface
+
+  leader_pot_type = eltype(cmte_pot.members)
+  if leader_pot_type <: AbstractPotential
+    all_potengs = [ InteratomicPotentials.potential_energy(sys,pot) * cmte_pot.energy_units
+                    for pot in cmte_pot.members]
+  else
+    all_potengs = [AtomsCalculators.potential_energy(sys,pot)
+                    for pot in cmte_pot.members]
+  end
+
+  all_potengs
+end
+
+function compute_all_forces(sys::AbstractSystem, cmte_pot::CommitteePotential)
+  # This manual type stuff is only needed so long as IP.jl doesn't satistfy the AtomsCalculators interface
+
+  leader_pot_type = eltype(cmte_pot.members)
+  if leader_pot_type <: AbstractPotential
+    force_units = cmte_pot.energy_units/cmte_pot.length_units
+    all_forces = [ InteratomicPotentials.force(sys,pot) * force_units
+                  for pot in cmte_pot.members]
+  else
+    all_forces = [ AtomsCalculators.forces(sys,pot)
+                  for pot in cmte_pot.members]
+  end
+
+  all_forces
 end

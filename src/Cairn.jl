@@ -40,6 +40,7 @@ include("interactions/sinusoid.jl")
 include("interactions/pce.jl")
 include("interactions/muller_brown_rotated.jl")
 include("interactions/committee_potentials.jl")
+include("interactions/committee_qois.jl")
 # include("interactions/interatomicpotential.jl")
 
 include("simulators/simulators.jl")
