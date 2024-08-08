@@ -64,8 +64,8 @@ struct CmteFlatForces <: AbstractCommitteeQoI
                             coord_and_atom_reduce_function::Union{Nothing,Function},
                             reduce_order::Vector{Int64},
                             strip_units::Bool)
-        cmte_reduce_valid = true
         num_reduce_fns = 0
+        cmte_reduce_valid = true
         if !isnothing(cmte_reduce_function)
             num_reduce_fns += 1
             if !_check_reduction_fn(cmte_reduce_function)
@@ -89,8 +89,12 @@ struct CmteFlatForces <: AbstractCommitteeQoI
             error("Cmte reduction and coord_and_atom reduction functions invalid. Must reduce to single Float, Integer, or Boolean")
         end
 
-        if length(reduce_order) > num_reduce_fns || maximum(reduce_order) > 2 || minimum(reduce_order) < 1
+        if length(reduce_order) != num_reduce_fns
             error("Invalid reduce_order. Please use NamedTuple-based constructor")
+        elseif length(reduce_order) > 0
+            if maximum(reduce_order) > 2 || minimum(reduce_order) < 1
+                error("Invalid reduce_order. Please use NamedTuple-based constructor")
+            end
         end
 
         return new(cmte_reduce_function,coord_and_atom_reduce_function,reduce_order,strip_units)
@@ -112,15 +116,15 @@ function CmteFlatForces(nt::NamedTuple{<:Any, <:Tuple{Vararg{Function}}};
                     )
 
     if !all(in.(keys(nt),[keys(fn_dict)]))
-      error("""Only allowed keys are "cmte", "coord_and_atom" """)
+        error("""Only allowed keys are 'cmte', 'coord_and_atom' """)
     elseif length(nt) > 2
-      error("There can be a maximum of 2 elements in the passed NamedTuple")
+        error("There can be a maximum of 2 elements in the passed NamedTuple") # should never happen
     end
 
     reduce_order = Int64[]
     for (k,fn) in pairs(nt)
-      push!(reduce_order,fn_dict[k]["idx"])
-      fn_dict[k]["fn"] = fn
+        push!(reduce_order,fn_dict[k]["idx"])
+        fn_dict[k]["fn"] = fn
     end
 
     cmte_flat_force_qoi = CmteFlatForces(fn_dict[:cmte]["fn"],
@@ -130,8 +134,8 @@ function CmteFlatForces(nt::NamedTuple{<:Any, <:Tuple{Vararg{Function}}};
     cmte_flat_force_qoi
 end
 
-function CmteFlatForces()
-    flat_force_qoi = CmteFlatForces(nothing,nothing,Int64[],false)
+function CmteFlatForces(;strip_units=false)
+    flat_force_qoi = CmteFlatForces(nothing,nothing,Int64[],strip_units)
     flat_force_qoi
 end
 
@@ -152,31 +156,168 @@ function compute(qoi::CmteFlatForces,sys::AbstractSystem,cmte_pot::CommitteePote
     end
 
     if isnothing(qoi.cmte_reduce) && isnothing(qoi.coord_and_atom_reduce)
-      return all_flat_forces
+        return all_flat_forces
     else
-      inter = all_flat_forces
-      for d in qoi.reduce_order
-        inter = mapslices(reduce_dict[d],inter,dims=d)
-      end
-
-      if length(qoi.reduce_order) == 2
-        # assert statement fails with units
-        #@assert size(inter) == (1,1) && typeof(inter[1]) <: Union{<:Real, <:Integer, Bool}
-        final_qoi = inter[1]
-      else
+        inter = all_flat_forces
         for d in qoi.reduce_order
-          @assert size(inter,d) == 1 # ensure singleton dimension
+            inter = mapslices(reduce_dict[d],inter,dims=d)
         end
 
-        #arguably should check if Int,bool, float, but once I put that in the inner constructor it's fine
-        final_qoi = dropdims(inter,dims=Tuple(qoi.reduce_order))
-      end
-      return final_qoi
+        if length(qoi.reduce_order) == 2
+            @assert size(inter) == (1,1)
+            final_qoi = inter[1]
+        else
+            for d in qoi.reduce_order
+                @assert size(inter,d) == 1 # ensure singleton dimension
+          end
+
+          final_qoi = dropdims(inter,dims=Tuple(qoi.reduce_order))
+        end
+        return final_qoi
     end
 end
 
 
 
+
+
+
+### Committee Forces QoI ###
+
+struct CmteForces <: AbstractCommitteeQoI
+    cmte_reduce::Union{Nothing,Function}
+    atom_reduce::Union{Nothing,Function}
+    coord_reduce::Union{Nothing,Function}
+    reduce_order::Vector{Int64}
+    strip_units::Bool
+
+    function CmteForces(cmte_reduce::Union{Nothing,Function},
+                        atom_reduce::Union{Nothing,Function},
+                        coord_reduce::Union{Nothing,Function},
+                        reduce_order::Vector{Int64},
+                        strip_units::Bool)
+
+        # most of this extra logic is for more informative errors
+        reduction_fns = [cmte_reduce,atom_reduce,coord_reduce]
+        labels = ["cmte reduce", "atom reduce", "coord reduce"]
+        reduction_invalid = [false,false,false]
+        num_reduce_fns = 0
+
+        for idx in eachindex(reduction_fns)
+            if !isnothing(reduction_fns[idx])
+                num_reduce_fns += 1
+                if !_check_reduction_fn(reduction_fns[idx])
+                    reduction_invalid[idx] = true
+                end
+            end
+        end
+
+        invalid_idxs = findall(reduction_invalid)
+        if length(invalid_idxs) == 1
+            e_msg = "The $(labels[invalid_idxs[1]]) function is invalid. Must reduce to single Float, Integer, or Boolean"
+            error(e_msg)
+        elseif length(invalid_idxs) > 1
+            e_msg = "The "
+            for iidx in invalid_idxs[1:end-1]
+                e_msg = e_msg * "$(labels[iidx]), "
+            end
+            e_msg = e_msg * "$(labels[invalid_idxs[end]]) "
+            e_msg = e_msg * "functions are invalid. Must reduce to single Float, Integer, or Boolean"
+            error(e_msg)
+        end
+
+        if length(reduce_order) != num_reduce_fns
+            error("Invalid reduce_order. Please use NamedTuple-based constructor")
+        elseif length(reduce_order) > 0
+            if maximum(reduce_order) > 3 || minimum(reduce_order) < 1
+                error("Invalid reduce_order. Please use NamedTuple-based constructor")
+            end
+        end
+
+        return new(cmte_reduce,atom_reduce,coord_reduce,reduce_order,strip_units)
+    end
+
+
+end
+
+function CmteForces(;strip_units=false)
+    cmte_force_qoi = CmteForces(nothing,nothing,nothing,Int64[],strip_units)
+    cmte_force_qoi
+end
+
+function CmteForces(nt::NamedTuple{<:Any, <:Tuple{Vararg{Function}}}; strip_units=false)
+    fn_dict = Dict(:cmte =>
+                    Dict{String,Union{Nothing,Function,Int64}}(
+                        "fn"  => nothing,
+                        "idx" => 1),
+                    :atom =>
+                    Dict{String,Union{Nothing,Function,Int64}}(
+                        "fn"  => nothing,
+                        "idx" => 2),
+                    :coord =>
+                    Dict{String,Union{Nothing,Function,Int64}}(
+                        "fn"  => nothing,
+                        "idx" => 3),
+
+                    )
+
+    if !all(in.(keys(nt),[keys(fn_dict)]))
+        error("""Only allowed keys are 'cmte', 'atom', 'coord' """)
+    elseif length(nt) > 3
+        error("There can be a maximum of 3 elements in the passed NamedTuple") # should never happen
+    end
+
+    reduce_order = Int64[]
+    for (k,fn) in pairs(nt)
+        push!(reduce_order,fn_dict[k]["idx"])
+        fn_dict[k]["fn"] = fn
+    end
+
+    cmte_force_qoi = CmteForces(fn_dict[:cmte]["fn"],
+                                fn_dict[:atom]["fn"],
+                                fn_dict[:coord]["fn"],
+                                reduce_order,
+                                strip_units)
+    cmte_force_qoi
+end
+
+function compute(qoi::CmteForces,sys::AbstractSystem,cmte_pot::CommitteePotential)
+
+  reduce_dict = Dict{Int64, Union{Nothing,Function}}(
+                1 => qoi.cmte_reduce,
+                2 => qoi.atom_reduce,
+                3 => qoi.coord_reduce)
+
+  raw_all_forces = compute_all_forces(sys,cmte_pot)
+
+  if qoi.strip_units
+      # Vector{Vector{<:AbstractArray{T,1}}} is the current format of raw_all_forces
+      if eltype(raw_all_forces[1][1]) <: Unitful.Quantity # may be unnecessary once AC interface firmly enforced?
+          raw_all_forces = [[ustrip.(forces_per_atom) for forces_per_atom in cmte_forces] for cmte_forces in raw_all_forces]
+      end
+  end
+
+  if isnothing(qoi.cmte_reduce) && isnothing(qoi.atom_reduce) && isnothing(qoi.coord_reduce)
+    return raw_all_forces
+  else
+    inter = stack(map(elem->stack(elem,dims=1),raw_all_forces), dims=1)  # num_cmte x num_atoms x 3
+    for d in qoi.reduce_order
+        inter = mapslices(reduce_dict[d],inter,dims=d)
+    end
+
+    if length(qoi.reduce_order) == 3
+        @assert size(inter) == (1,1,1)
+        final_qoi = inter[1]
+    else
+        for d in qoi.reduce_order
+          @assert size(inter,d) == 1 # ensure singleton dimension
+        end
+
+        final_qoi = dropdims(inter,dims=Tuple(qoi.reduce_order))
+    end
+    return final_qoi
+  end
+end
 
 
 
@@ -190,6 +331,7 @@ function _check_reduction_fn(fn::Function)
   try
     res = fn(test_arr1)
   catch e
+    # note that a Unitful error is only really going to happen with the float array
     if isa(e,Unitful.DimensionError)
         expected_units = unit(e.x)
         unitted_test_arr = test_arr1 * expected_units
@@ -197,9 +339,11 @@ function _check_reduction_fn(fn::Function)
             res = fn(unitted_test_arr)
         catch
         else
-            # ustrip should still work even if res is an array (and then check_res == false)
-            # so don't need to proactively check that
-            check_res = typeof(ustrip(res)) <: Union{<:Real, <:Integer, Bool}
+            if res <: AbstractArray
+                check_res = false
+            else
+                check_res = typeof(ustrip(res)) <: Union{<:Real, <:Integer, Bool}
+            end
             return check_res
         end
     end
