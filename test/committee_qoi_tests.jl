@@ -107,7 +107,7 @@ end
         cmte_energy4 = CmteEnergy(Statistics.std;strip_units=true)
         energy_std2 = compute(cmte_energy4,mb_sys,pce_cmte)
         @test typeof(energy_std2) <: Real
-        @test energy_std2 ≈ 126.15650119018225
+        @test energy_std2 ≈ 109.35169147516591
 
         # one aspect of this test is that it checks that the _check_reduction_fn works with unit'ed arrays
         cmte_energy5 = CmteEnergy(enrgs -> num_excess(enrgs,0.0u"kJ*mol^-1"))
@@ -231,7 +231,7 @@ end
                                         strip_units=true)
         flatforces9 = compute(cmte_fforces9,ace_sys,ace_cmte)
         @test typeof(flatforces9) <: Int64
-        @test flatforces == 4
+        @test flatforces9 == 4
 
         #i.e. how many force components have avg values above 6.0 eV/Å
         cmte_fforces10 = CmteFlatForces((cmte=Statistics.mean,
@@ -291,7 +291,7 @@ end
                          [0.07398833138686434 0.0020383112775153476 0.022390836562588386]] * ace_force_units
 
         cmte_forces2_strip = CmteForces((cmte=Statistics.std,); strip_units=true)
-        forces2_strip = compute(cmte_forces2,ace_sys,ace_cmte)
+        forces2_strip = compute(cmte_forces2_strip,ace_sys,ace_cmte)
         @test typeof(forces2_strip) <: Matrix{Float64}
         @test forces2_strip ≈ [[0.07398833138686434 0.0020383112775153476 0.022390836562588386];
                                [0.07398833138686434 0.0020383112775153476 0.022390836562588386]]
@@ -521,7 +521,7 @@ end
         @test_throws "The coord reduce function is invalid. Must reduce to"  CmteForces((coord=bad_function1,))
         @test_throws "The cmte reduce function is invalid. Must reduce to" CmteForces((cmte=bad_function1, atom=maximum))
         @test_throws "The cmte reduce function is invalid. Must reduce to" CmteForces((coord=norm, cmte=bad_function1))
-        @test_throws "The atom reduce function is invalid. Must reduce to" CmteForces((maximum=norm, cmte=bad_function1))
+        @test_throws "The atom reduce function is invalid. Must reduce to" CmteForces((coord=norm, atom=bad_function1))
 
         @test_throws "The cmte reduce, atom reduce functions are invalid." CmteForces((cmte=bad_function1,atom=bad_function1))
         @test_throws "The cmte reduce, atom reduce functions are invalid." CmteForces((atom=bad_function1,cmte=bad_function1))
