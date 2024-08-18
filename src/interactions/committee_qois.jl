@@ -339,7 +339,7 @@ function _check_reduction_fn(fn::Function)
             res = fn(unitted_test_arr)
         catch
         else
-            if res <: AbstractArray
+            if typeof(res) <: AbstractArray
                 check_res = false
             else
                 check_res = typeof(ustrip(res)) <: Union{<:Real, <:Integer, Bool}

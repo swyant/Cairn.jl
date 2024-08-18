@@ -19,6 +19,7 @@ struct CommitteePotential{P}
     leader::Integer
     energy_units::Unitful.Unitlike
     length_units::Unitful.Unitlike
+    force_units::Unitful.Unitlike
 
     #inner constructor to enforce that leader can appropriately access members
     function CommitteePotential(
@@ -30,12 +31,13 @@ struct CommitteePotential{P}
         if !checkbounds(Bool, members, leader)
             error("leader index is out of bounds with respect to members array")
         end
-        return new{P}(members,leader,eunits,lunits)
+        funits = eunits/lunits
+        return new{P}(members,leader,eunits,lunits,funits)
     end
 end
 
 function CommitteePotential(members::Vector{P},
-                            leader=1;
+                            leader::Integer=1;
                             energy_units=u"eV",
                             length_units=u"Å") where {P}
     cmte_pot = CommitteePotential(members,leader,energy_units,length_units)

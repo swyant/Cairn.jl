@@ -4,7 +4,7 @@ using Molly #also reexports Unitful
 using AtomsCalculators
 import SpecialPolynomials: Jacobi
 import StaticArrays: SVector
-using Test 
+using Test
 
 pce_template = PolynomialChaos(3, 2, Jacobi{0.5,0.5})
 ref = MullerBrownRot()
@@ -16,15 +16,15 @@ ref = MullerBrownRot()
                   [6.65932 62.8262 0.61548 91.5065 76.1619 27.3688 91.6777 66.1589 34.1041 8.07007];
                   [55.9341 15.572  19.6692 95.2555 5.81737 20.1318 68.1779 88.3704 6.86962 30.4034];
                   [88.3364 62.2294 26.9018 39.6262 46.7406 99.4504 16.5021 38.1385 6.07858 66.3549]]
-    
-    all_pces = [let 
+
+    all_pces = [let
                     coeffs = all_params[i,:]
                     pce = deepcopy(pce_template)
-                    pce.params = coeffs 
-                    pce 
+                    pce.params = coeffs
+                    pce
                 end
                 for i in 1:5]
-            
+
     ##Checking different constructors
     cmte_pot1 = CommitteePotential(all_pces,3,u"kJ * mol^-1",u"nm")
     @test typeof(cmte_pot1) <: CommitteePotential{<:PolynomialChaos}
@@ -35,60 +35,61 @@ ref = MullerBrownRot()
     cmte_pot4 = CommitteePotential(all_pces;energy_units=u"kJ * mol^-1",length_units= u"nm")
     @test typeof(cmte_pot4) <: CommitteePotential{<:PolynomialChaos}
     @test cmte_pot4.leader == 1
-    cmte_pot5 = CommitteePotential(all_pces) #adopts default units, which don't match member PCE units, but this is not enforced 
+    cmte_pot5 = CommitteePotential(all_pces) #adopts default units, which don't match member PCE units, but this is not enforced
     @test typeof(cmte_pot5) <: CommitteePotential{<:PolynomialChaos}
     @test cmte_pot5.leader == 1
     @test cmte_pot5.energy_units == u"eV"
     @test cmte_pot5.length_units == u"Å"
-            
+
+    #TODO need to check force units as well
     #TODO: redo above and below with a different type of member potential, prefereably ACE
-            
+
     #Checking bad inputs
     @test_throws "leader index is out of bounds" CommitteePotential(all_pces,7)
     @test_throws "leader index is out of bounds" CommitteePotential(all_pces,-1)
     @test_throws MethodError CommitteePotential(all_pces;energy_units=u"nm") #wrong unit dimensions
     @test_throws MethodError CommitteePotential(all_pces;length_units=u"K") #wrong unit dimensions
-            
-    # construct simple reference Molly system  
+
+    # construct simple reference Molly system
     xref = SVector{2}([0.096079218176701, -0.9623723102484034]) .* u"nm"
     sys_ref = System(ref,xref) # MullerBrown not actually invoked, just a "neutral" potential for these AtomsCalculators tests below
-            
+
     #TODO use AtomsCalculators test suite
-            
+
     # checking against reference values that cmte_pot computes correct "leader" forces and energies
     echeck1 = AtomsCalculators.potential_energy(sys_ref,cmte_pot1) #leader is 3
     @test typeof(echeck1) <: typeof(1.0u"kJ * mol^-1")
     @test echeck1 ≈ 4.6978599790506435u"kJ * mol^-1"
-            
+
     fcheck1 = AtomsCalculators.forces(sys_ref,cmte_pot1) # leader is 3
     @test length(fcheck1) == 1 # only one atom, should test other conditions
     @test typeof(fcheck1) <: Vector{SVector{2,typeof(1.0u"kJ * mol^-1 * nm^-1")}}
     @test fcheck1[1] ≈ [-57.734110333280256, -12.508601878931005]u"kJ * mol^-1 * nm^-1"
-            
+
     # Molly equivalence test, i.e. running with cmte_pot w/ leader 3 should produce same traj as directly running with pce3
     pce3 = deepcopy(pce_template)
     pce3.params = all_params[3,:]
     init_vels = random_velocities(sys_ref,300.0u"K")
-    sys_pce3 = Molly.System(sys_ref; 
+    sys_pce3 = Molly.System(sys_ref;
                             general_inters =(pce3,),
                             velocities=init_vels,
                             force_units=u"kJ * mol^-1 * nm^-1", #want to be explicit with units just in case
                             energy_units=u"kJ * mol^-1")
-            
+
     sim_nh = NoseHoover(dt=0.002u"ps",          #deterministic simulator
-                        temperature=300.0u"K", 
+                        temperature=300.0u"K",
                         remove_CM_motion=1)
-            
+
     simulate!(sys_pce3,sim_nh,100)
-            
+
     sys_cmtepot1 = Molly.System(sys_ref;
                                 general_inters =(cmte_pot1,),
                                 velocities=init_vels,
                                 force_units=u"kJ * mol^-1 * nm^-1", #want to be explicit with units just in case
                                 energy_units=u"kJ * mol^-1")
-            
+
     simulate!(sys_cmtepot1,sim_nh,100)
-            
+
     @test position(sys_pce3)[1] ≈ position(sys_cmtepot1)[1]
     @test forces(sys_pce3)[1] ≈ forces(sys_cmtepot1)[1]
 end
@@ -121,7 +122,7 @@ end
 
     fitted_pce = learn(ilp1,pce_template,train_systems)
     @test length(fitted_pce.params) == 10
-    #not sure how robust this test will be, but it would be nice to check that the learn!() is giving meaningful params 
+    #not sure how robust this test will be, but it would be nice to check that the learn!() is giving meaningful params
     @test fitted_pce.params ≈ [-335.3750515214229,
                                 615.4631933197177,
                                 247.61997737909118,
@@ -132,13 +133,13 @@ end
                                 2167.8887229673587,
                                 -1363.034451052221,
                                 539.6457680262732]
-            
+
     cmte_pot_template = CommitteePotential([deepcopy(pce_template) for _ in 1:10], 7)
-            
+
     #initial state of commitee LearningProblem
     clp_template = SubsampleAppendCmteRetrain(InefficientLearningProblem(;ref=ref),
                                               [[-1] for _ in 1:10])
-            
+
     clp1 = deepcopy(clp_template)
     fit_cmte_pot1 = learn!(clp1, cmte_pot_template,train_systems;frac=0.7)
     @test all(length.(clp1.cmte_indices) .== 14) # 0.7*20=14

@@ -3,8 +3,8 @@ using Molly
 using PotentialLearning, InteratomicPotentials
 using Statistics
 using SpecialPolynomials: Jacobi
-using Test
 using LinearAlgebra: norm
+using Test
 
 pce_template = PolynomialChaos(3, 2, Jacobi{0.5,0.5})
 ref = MullerBrownRot()

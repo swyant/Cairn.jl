@@ -5,5 +5,4 @@ using SafeTestsets
 
 @safetestset "Basic Committee Potential Tests" begin include("committee_potential_tests.jl") end
 @safetestset "Committee QoI Tests" begin include("committee_qoi_tests.jl") end
-
-
+@safetestset "Committee Trigger Tests" begin include("./committee_trigger_tests.jl") end
