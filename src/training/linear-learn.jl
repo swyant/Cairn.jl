@@ -13,7 +13,7 @@ function LinearProblem(
         descriptors = sum.(compute_local_descriptors.(sys_train, Ref(mlip)))
         energies = AtomsCalculators.potential_energy.(sys_train, Ref(ref))
     end
-    if f_flag 
+    if f_flag
         force_descriptors = reduce(vcat, compute_force_descriptors.(sys_train, Ref(mlip)))
         force = AtomsCalculators.forces.(sys_train, Ref(ref))
     end
