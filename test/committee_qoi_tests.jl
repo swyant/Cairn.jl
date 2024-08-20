@@ -272,7 +272,7 @@ end
                        [[-6.383806323430971,0.034489607530542365,0.20447915531187807],[6.383806323430971,-0.034489607530542365,-0.20447915531187807]],
                        [[-6.524628854428479,0.03887666524763855,0.25392612216268523 ],[6.524628854428479,-0.03887666524763855,-0.25392612216268523]],
                        [[-6.37029042242475,0.034663551068511725,0.21774432384714262 ],[6.37029042242475,-0.034663551068511725,-0.21774432384714262]]] * ace_force_units
-        @test all(all(forces1[i] .≈ ref_forces1[i]) for i in eachindex(forces1))
+        @test all( [all(forces1[i] .≈ ref_forces1[i]) for i in eachindex(forces1)] )
 
         cmte_forces1_strip = CmteForces(;strip_units=true)
         forces1_strip = compute(cmte_forces1_strip,ace_sys,ace_cmte)

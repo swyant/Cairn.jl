@@ -50,9 +50,12 @@ cmte_pot3 = CommitteePotential([let
 
 xcoords1 = [0.096079218176701, -0.9623723102484034]
 xcoords2 = [0.096079218176701, 0.9623723102484034]
+xcoords3 = [-1.0,1.0]
+xcoords4 = [2.0,1.0]
 base_sys1 = System(ref,xcoords1)
 base_sys2 = System(ref,xcoords2)
-
+base_sys3 = System(ref,xcoords3)
+base_sys4 = System(ref,xcoords4)
 
 mean_energy = CmteEnergy(Statistics.mean; strip_units=false)
 mean_energy_stripped = CmteEnergy(Statistics.mean; strip_units=true)
@@ -79,11 +82,11 @@ all_cmte_large_forces = CmteFlatForces((coord_and_atom = (x -> all_below(abs.(x)
                                         strip_units = true
                                       )
 
-## how many committees predict at least one force component with an absolute value above 300
-#num_cmte_max_force = CmteFlatForces((coord_and_atom = (x -> maximum(abs.(x))   ),
-#                                     cmte           = (x -> num_above(x,300) ));
-#                                     strip_units = true
-#                                    )
+# how many committees predict at least one force component with an absolute value above 1000
+num_cmte_max_force = CmteFlatForces((coord_and_atom = (x -> maximum(abs.(x))   ),
+                                     cmte           = (x -> num_above(x,1000) ));
+                                     strip_units = true
+                                    )
 
 @testset "Basic SimpleTriggerLogger Tests" begin
     simple_logger1 = SimpleTriggerLogger()
@@ -100,6 +103,9 @@ all_cmte_large_forces = CmteFlatForces((coord_and_atom = (x -> all_below(abs.(x)
     log_property!(simple_logger1, 15.0, 1)
     @test simple_logger1.observable == 15.0
     @test length(simple_logger1.history) == 0
+
+    Cairn.reset_observable!(simple_logger1)
+    @test isnothing(simple_logger1.observable)
 
     simple_logger2 = SimpleTriggerLogger(1)
     @test typeof(simple_logger2) <: SimpleTriggerLogger{Float64}
@@ -231,6 +237,8 @@ end
     @test msys1_w_trigg.loggers[:cmte_mean_energy].observable ≈ 238.62856102151517u"kJ*mol^-1"
     @test msys1_w_trigg.loggers[:cmte_mean_energy].history ≈ [26.946218132558347,238.62856102151517]u"kJ*mol^-1"
     @test length(msys1_w_trigg.loggers[:pe].history) == 0
+    perstep_reset!((mean_e_trigger,),msys1_w_trigg)
+    @test isnothing(msys1_w_trigg.loggers[:cmte_mean_energy].observable)
 
     # checking that float comparisons work, and that SimpleTriggerLogger records history appropriately
     mean_s_e_trigger = CmteTrigger(mean_energy_stripped, >, 100.0;
@@ -296,4 +304,235 @@ end
 
     # What if you want to log an intermediate trigger-related QoI. Don't provide an easy way for that...
     # In theory could register a standard logger with the intermediate QoI, and could add a cache field to the regular cmte_trigger
+end
+
+@testset "CmteTrigger Tests" begin
+
+    #### basic constructor tests
+    trigg1 = CmteTrigger(mean_energy,>,100.0u"kJ*mol^-1";
+                         logger_spec=(:cmte_mean_energy, 1))
+    trigg2 = CmteTrigger(mean_std_fcomp, >, 200.0u"kJ*mol^-1*nm^-1";
+                         logger_spec=(:mean_std_fcomp,2))
+    trigg3 = CmteTrigger(num_cmte_max_force, >, 1)
+
+    # testing inner constructor with all defaults
+    sct1 = SharedCmteTrigger((trigg1,trigg2,trigg3))
+    @test typeof(sct1) <: SharedCmteTrigger
+    @test isnothing(sct1.cmte_pot)
+    @test isnothing(sct1.energy_cache_field)
+    @test isnothing(sct1.force_cache_field)
+
+    # testing inner constructor with defaults except for cmte_pot
+    sct2 = SharedCmteTrigger((trigg1,trigg2,trigg3), cmte_pot1)
+    @test typeof(sct2) <: SharedCmteTrigger
+    @test sct2.cmte_pot == cmte_pot1
+    @test isnothing(sct2.energy_cache_field)
+    @test isnothing(sct2.force_cache_field)
+
+    # testing constructor with keywords
+    sct3 = SharedCmteTrigger((trigg1,trigg2,trigg3), cmte_pot1;
+                             energy_cache_field=:cmte_energies,
+                             force_cache_field=:cmte_forces)
+    @test typeof(sct3) <: SharedCmteTrigger
+    @test sct3.cmte_pot == cmte_pot1
+    @test sct3.energy_cache_field == :cmte_energies
+    @test sct3.force_cache_field == :cmte_forces
+
+    #### initialize_triggers: append_loggers tests
+    msys_nologgers = deepcopy(base_sys1)
+    msys_existing_loggers = System(base_sys1;
+                                   loggers = (coord=CoordinateLogger(1),
+                                              pe=PotentialEnergyLogger(1)))
+
+    # loggers correctly set up when no loggers exists to start
+    msys_startwnologgers = initialize_triggers((sct2,), msys_nologgers)
+    @test keys(msys_startwnologgers.loggers) == (:cmte_mean_energy, :mean_std_fcomp)
+    @test typeof(msys_startwnologgers.loggers.cmte_mean_energy) <: SimpleTriggerLogger{typeof(1.0u"kJ*mol^-1")}
+    @test msys_startwnologgers.loggers.cmte_mean_energy.n_steps == 1
+    @test typeof(msys_startwnologgers.loggers.mean_std_fcomp) <: SimpleTriggerLogger{typeof(1.0u"kJ*mol^-1*nm^-1")}
+    @test msys_startwnologgers.loggers.mean_std_fcomp.n_steps == 2
+
+    # loggers correctly set up when loggers already exists
+    msys_startwloggers = initialize_triggers((sct2,), msys_existing_loggers)
+    @test keys(msys_startwloggers.loggers) == (:coord,:pe, :cmte_mean_energy, :mean_std_fcomp)
+    @test typeof(msys_startwloggers.loggers.cmte_mean_energy) <: SimpleTriggerLogger{typeof(1.0u"kJ*mol^-1")}
+    @test msys_startwloggers.loggers.cmte_mean_energy.n_steps == 1
+    @test typeof(msys_startwloggers.loggers.mean_std_fcomp) <: SimpleTriggerLogger{typeof(1.0u"kJ*mol^-1*nm^-1")}
+    @test msys_startwloggers.loggers.mean_std_fcomp.n_steps == 2
+
+    # Second logger has the same logger_spec symbol, should throw error
+    trigg_bad_spec = CmteTrigger(mean_energy_stripped,<,-500.0;
+                         logger_spec=(:cmte_mean_energy, 1))
+    sct_badspec = SharedCmteTrigger((trigg1,trigg2,trigg3,trigg_bad_spec),cmte_pot1)
+    @test_throws "Symbol provided in trigger.logger_spec is already used in the System.loggers" initialize_triggers((sct_badspec,), msys_nologgers)
+
+    #### initialize_triggers: initialize_data tests
+
+    msys_nodata = deepcopy(base_sys1)
+    msys_existing_data1 = System(base_sys1;
+                                data=Dict("existing"=>1)) # Dict{String,Int64}
+    msys_existing_data2 = System(base_sys1;
+                                 data=Dict(:exist1 => 1,
+                                           "exist2" => "hey")) # Dict{Any, Any}
+
+    # starting with system with no data, is sys.data initialized correctly?
+    msys_startnodata = initialize_triggers((sct3,),msys_nodata)
+    @test typeof(msys_startnodata.data) <: Dict{Any,Any}
+    @test length(keys(msys_startnodata.data)) == 3
+    @test all(in.( (:_reset_every_step, :cmte_energies, :cmte_forces), Ref(keys(msys_startnodata.data)))) # can't assume key order
+    @test msys_startnodata.data[:_reset_every_step] ==  [:cmte_energies, :cmte_forces]
+    @test isnothing(msys_startnodata.data[:cmte_energies])
+    @test isnothing(msys_startnodata.data[:cmte_forces])
+
+    # Starting with a system that has a data field of type Dict{String, Int64}, does the data field get appropriately initialized
+    msys_startwdata1 = initialize_triggers((sct3,),msys_existing_data1)
+    @test typeof(msys_startwdata1.data) <: Dict{Any,Any}
+    @test length(keys(msys_startwdata1.data)) == 4
+    @test all(in.( ("existing", :_reset_every_step, :cmte_energies, :cmte_forces), Ref(keys(msys_startwdata1.data))))
+    @test msys_startwdata1.data[:_reset_every_step] == [:cmte_energies, :cmte_forces]
+    @test msys_startwdata1.data["existing"] == 1
+    @test isnothing(msys_startwdata1.data[:cmte_energies])
+    @test isnothing(msys_startwdata1.data[:cmte_forces])
+
+    # Starting with a system that has a data field of type Dict{Any,Any}, w/ two entries
+    msys_startwdata2 = initialize_triggers((sct3,),msys_existing_data2)
+    @test typeof(msys_startwdata2.data) <: Dict{Any,Any}
+    @test length(keys(msys_startwdata2.data)) == 5
+    @test all(in.( (:exist1, "exist2", :_reset_every_step, :cmte_energies, :cmte_forces), Ref(keys(msys_startwdata2.data))))
+    @test msys_startwdata2.data[:_reset_every_step] == [:cmte_energies, :cmte_forces]
+    @test msys_startwdata2.data[:exist1] == 1
+    @test msys_startwdata2.data["exist2"] == "hey"
+    @test isnothing(msys_startwdata2.data[:cmte_energies])
+    @test isnothing(msys_startwdata2.data[:cmte_forces])
+
+    # TODO: test SharedCmteTrigger + CmteTrigger combos
+
+    #### boolean logic and loggers working
+
+    msys_main_init = System(base_sys1;
+                            loggers = (pe=PotentialEnergyLogger(1),))
+    msys_main = initialize_triggers((sct2,),msys_main_init)
+
+    # first case (base_sys1), all triggers should be false. Timestep=1
+    @test compute(sct2.subtriggers[1].cmte_qoi,base_sys1,cmte_pot1) ≈ 26.946218132558347u"kJ*mol^-1"
+    @test compute(sct2.subtriggers[2].cmte_qoi,base_sys1,cmte_pot1) ≈ 177.85936562044168u"kJ*mol^-1*nm^-1"
+    @test compute(sct2.subtriggers[3].cmte_qoi,base_sys1,cmte_pot1) == 0
+
+    @test trigger_activated!(sct2,msys_main,nothing,1) == false
+    @test msys_main.loggers[:cmte_mean_energy].observable ≈ 26.946218132558347u"kJ*mol^-1"
+    @test msys_main.loggers[:mean_std_fcomp].observable ≈ 177.85936562044168u"kJ*mol^-1*nm^-1"
+
+    # second case (base_sys2), only first trigger should be true, but overall trigger_activated will be true. Timestep=2
+    msys_main.coords = [SVector{2}(xcoords2*u"nm")]
+    @test compute(sct2.subtriggers[1].cmte_qoi,base_sys2,cmte_pot1) ≈ 238.62856102151517u"kJ*mol^-1"
+    @test compute(sct2.subtriggers[2].cmte_qoi,base_sys2,cmte_pot1) ≈ 192.1288782829269u"kJ*mol^-1*nm^-1"
+    @test compute(sct2.subtriggers[3].cmte_qoi,base_sys2,cmte_pot1) == 0
+
+    @test trigger_activated!(sct2,msys_main,nothing,2) == true
+    @test msys_main.loggers[:cmte_mean_energy].observable ≈ 238.62856102151517u"kJ*mol^-1"
+    @test msys_main.loggers[:mean_std_fcomp].observable ≈ 192.1288782829269u"kJ*mol^-1*nm^-1"
+
+    # third case (base_sys3), only second trigger should be true, but overall trigger_activated will be true. Timestep=3
+    msys_main.coords = [SVector{2}(xcoords3*u"nm")]
+    @test compute(sct2.subtriggers[1].cmte_qoi,base_sys3,cmte_pot1) ≈ 57.33819859375001u"kJ*mol^-1"
+    @test compute(sct2.subtriggers[2].cmte_qoi,base_sys3,cmte_pot1) ≈ 235.51275490040797u"kJ*mol^-1*nm^-1"
+    @test compute(sct2.subtriggers[3].cmte_qoi,base_sys3,cmte_pot1) == 0
+
+    @test trigger_activated!(sct2,msys_main,nothing,3) == true
+    @test msys_main.loggers[:cmte_mean_energy].observable ≈ 57.33819859375001u"kJ*mol^-1"
+    @test msys_main.loggers[:mean_std_fcomp].observable ≈ 235.51275490040797u"kJ*mol^-1*nm^-1"
+
+    # fourth case (base_sys4), only second trigger should be true, but overall trigger_activated will be true. Timestep=4
+    msys_main.coords = [SVector{2}(xcoords4*u"nm")]
+    @test compute(sct2.subtriggers[1].cmte_qoi,base_sys4,cmte_pot1) ≈ 3142.4504457812504u"kJ*mol^-1"
+    @test compute(sct2.subtriggers[2].cmte_qoi,base_sys4,cmte_pot1) ≈ 1122.792294408608u"kJ*mol^-1*nm^-1"
+    @test compute(sct2.subtriggers[3].cmte_qoi,base_sys4,cmte_pot1) == 4
+
+    @test trigger_activated!(sct2,msys_main,nothing,4) == true
+    @test msys_main.loggers[:cmte_mean_energy].observable ≈ 3142.4504457812504u"kJ*mol^-1"
+    @test msys_main.loggers[:mean_std_fcomp].observable ≈ 1122.792294408608u"kJ*mol^-1*nm^-1"
+
+    # checking that perstep_reset
+    perstep_reset!((sct2,),msys_main)
+    @test isnothing(msys_main.loggers[:cmte_mean_energy].observable)
+    @test isnothing(msys_main.loggers[:mean_std_fcomp].observable)
+
+    # checking overall logger histories after these four trigger_activated!() calls
+    @test msys_main.loggers[:cmte_mean_energy].history ≈ [26.946218132558347,238.62856102151517,57.33819859375001,3142.4504457812504]u"kJ*mol^-1"
+    @test msys_main.loggers[:mean_std_fcomp].history ≈ [192.1288782829269,1122.792294408608]u"kJ*mol^-1*nm^-1"
+    @test length(msys_main.loggers[:pe].history) == 0
+
+    #### Checking that appropriate cmte_pot is used
+
+    # First case, System has general_inters[1]==cmte_pot2, SharedCmteTrigger also has cmte_pot==cmte_pot1. The latter takes precedence
+    msys_wcmtepot_init = System(base_sys1;
+                                general_inters=(cmte_pot2,))
+
+    msys_wcmtepot_sct2 = initialize_triggers((sct2,), msys_wcmtepot_init)
+
+    #see above lines for compute with sct2.subtrigger's for expected values, trigger_activated!() should return false
+    @test trigger_activated!(sct2,msys_wcmtepot_sct2,nothing,1) == false
+    @test msys_wcmtepot_sct2.loggers[:cmte_mean_energy].observable ≈ 26.946218132558347u"kJ*mol^-1"
+    @test msys_wcmtepot_sct2.loggers[:mean_std_fcomp].observable ≈ 177.85936562044168u"kJ*mol^-1*nm^-1"
+
+    # Second case, System still has general_inters[1]==cmte_pot2, SharedCmteTrigger does *not* have cmte_pot so cmte_pot2 should be invoked
+    msys_wcmtepot_sct1 = initialize_triggers((sct1,),msys_wcmtepot_init)
+
+    @test compute(sct1.subtriggers[1].cmte_qoi,base_sys1,cmte_pot2) ≈ -9510.118425779501u"kJ*mol^-1"
+    @test compute(sct1.subtriggers[2].cmte_qoi,base_sys1,cmte_pot2) ≈ 5233.7395880969u"kJ*mol^-1*nm^-1"
+    @test compute(sct1.subtriggers[3].cmte_qoi,base_sys1,cmte_pot2) == 4
+
+    @test trigger_activated!(sct1,msys_wcmtepot_sct1,nothing,1) == true
+    @test msys_wcmtepot_sct1.loggers[:cmte_mean_energy].observable ≈ -9510.118425779501u"kJ*mol^-1"
+    @test msys_wcmtepot_sct1.loggers[:mean_std_fcomp].observable ≈ 5233.7395880969u"kJ*mol^-1*nm^-1"
+
+    # Third case, neither System nor SharedCmteTrigger has cmte_pot. However individual CmteTrigger's do. Doesn't matter, error should be thrown
+    simple_sys_init = deepcopy(base_sys1)
+
+    trigg1_alt = CmteTrigger(mean_energy,>,100.0u"kJ*mol^-1";
+                             logger_spec=(:cmte_mean_energy, 1))
+    trigg2_alt = CmteTrigger(mean_std_fcomp, >, 200.0u"kJ*mol^-1*nm^-1";
+                             logger_spec=(:mean_std_fcomp,2))
+
+    sct_alt = SharedCmteTrigger((trigg1_alt,trigg2_alt))
+
+    simple_sys = initialize_triggers((sct_alt,),simple_sys_init)
+    @test_throws "SharedCmteTrigger cannot be used if neither" trigger_activated!(sct1,simple_sys,nothing,1)
+
+
+
+    #### Checking that data is actually cached, cache data is being used
+
+    # using msys_existing_data1 and sct3 w/ cache fields.
+    # after trigger_activated!(), cache fields should be populated and will persist until
+    msys_cache_test = initialize_triggers((sct3,), msys_existing_data1)
+    trigger_activated!(sct3,msys_cache_test,nothing,1)
+
+    @test msys_cache_test.data[:cmte_energies] ≈ [16.894988694723455,
+                                                       174.92114032265883,
+                                                       4.6978599790506435,
+                                                       -88.72911646619953] * u"kJ*mol^-1"
+
+    ref_cache_forces = [[131.97621459195736, -40.62578483607613],
+                        [78.55028720340587, 259.2734577408197],
+                        [-57.734110333280256, -12.508601878931005],
+                        [-59.59455640108558, -372.1094631947155]]
+    ref_cache_forces = [[SVector{2}(ref_force_arr)*u"kJ*mol^-1*nm^-1"] for ref_force_arr in ref_cache_forces]
+    @test all([all(msys_cache_test.data[:cmte_forces][i] .≈ ref_cache_forces[i]) for i in eachindex(ref_cache_forces)])
+
+    # To check that cache fields are being used, running compute on different system, get same results as base_sys1
+    # only recover correct qoi after perstep_reset!
+    msys_cache_test.coords = [SVector{2}(xcoords4*u"nm")]
+    @test compute(mean_energy,msys_cache_test,cmte_pot1;cache_field=:cmte_energies) ≈ 26.946218132558347u"kJ*mol^-1" # result for base_sys1
+    @test compute(mean_std_fcomp,msys_cache_test,cmte_pot1;cache_field=:cmte_forces) ≈ 177.85936562044168u"kJ*mol^-1*nm^-1" # result for base_sys1
+
+    perstep_reset!((sct3,),msys_cache_test)
+
+    @test isnothing(msys_cache_test.data[:cmte_energies])
+    @test isnothing(msys_cache_test.data[:cmte_forces])
+    @test compute(mean_energy,msys_cache_test,cmte_pot1;cache_field=:cmte_energies)    ≈ 3142.4504457812504u"kJ*mol^-1" # correct result
+    @test compute(mean_std_fcomp,msys_cache_test,cmte_pot1;cache_field=:cmte_forces) ≈ 1122.792294408608u"kJ*mol^-1*nm^-1" # correct result
+
+
+
 end

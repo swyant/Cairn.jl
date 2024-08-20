@@ -30,9 +30,18 @@ function CmteEnergy(reduce_fn::Union{Nothing, Function}=nothing;
     cmte_e_qoi
 end
 
-function compute(qoi::CmteEnergy,sys::AbstractSystem,cmte_pot::CommitteePotential)
+function compute(qoi::CmteEnergy,sys::AbstractSystem,cmte_pot::CommitteePotential; cache_field=nothing)
 
-    all_energies = compute_all_energies(sys,cmte_pot)
+    if typeof(sys) <: Molly.System && !isnothing(cache_field)
+      if isnothing(sys.data[cache_field])
+        all_energies = compute_all_energies(sys,cmte_pot)
+        sys.data[cache_field] = all_energies
+      else
+        all_energies = sys.data[cache_field]
+      end
+    else
+        all_energies = compute_all_energies(sys,cmte_pot)
+    end
 
     if qoi.strip_units
         if eltype(all_energies) <: Unitful.Quantity # may be unnecessary once AC interface firmly enforced?
@@ -139,13 +148,23 @@ function CmteFlatForces(;strip_units=false)
     flat_force_qoi
 end
 
-function compute(qoi::CmteFlatForces,sys::AbstractSystem,cmte_pot::CommitteePotential)
+function compute(qoi::CmteFlatForces,sys::AbstractSystem,cmte_pot::CommitteePotential; cache_field=nothing)
     reduce_dict = Dict{Int64, Union{Nothing,Function}}(
                   1 => qoi.cmte_reduce,
                   2 => qoi.coord_and_atom_reduce)
 
-    raw_all_forces = compute_all_forces(sys,cmte_pot)
+    if typeof(sys) <: Molly.System && !isnothing(cache_field)
+      if isnothing(sys.data[cache_field])
+        raw_all_forces = compute_all_forces(sys,cmte_pot)
+        sys.data[cache_field] = raw_all_forces
+      else
+        raw_all_forces = sys.data[cache_field]
+      end
+    else
+        raw_all_forces = compute_all_forces(sys,cmte_pot)
+    end
 
+    #TODO Is it worth it to cache flat forces directly rather than raw_all_forces
     all_forces = stack(map(elem->stack(elem,dims=1),raw_all_forces), dims=1)  # num_cmte x num_atoms x 3
     all_flat_forces = reshape(permutedims(all_forces,(1,3,2)), size(all_forces,1), :) #num_cmte x num_atoms*3 1x,1y,1z,2x,2y,2z,etc.
 
@@ -281,14 +300,23 @@ function CmteForces(nt::NamedTuple{<:Any, <:Tuple{Vararg{Function}}}; strip_unit
     cmte_force_qoi
 end
 
-function compute(qoi::CmteForces,sys::AbstractSystem,cmte_pot::CommitteePotential)
+function compute(qoi::CmteForces,sys::AbstractSystem,cmte_pot::CommitteePotential; cache_field=nothing)
 
   reduce_dict = Dict{Int64, Union{Nothing,Function}}(
                 1 => qoi.cmte_reduce,
                 2 => qoi.atom_reduce,
                 3 => qoi.coord_reduce)
 
-  raw_all_forces = compute_all_forces(sys,cmte_pot)
+  if typeof(sys) <: Molly.System && !isnothing(cache_field)
+    if isnothing(sys.data[cache_field])
+      raw_all_forces = compute_all_forces(sys,cmte_pot)
+      sys.data[cache_field] = raw_all_forces
+    else
+      raw_all_forces = sys.data[cache_field]
+    end
+  else
+      raw_all_forces = compute_all_forces(sys,cmte_pot)
+  end
 
   if qoi.strip_units
       # Vector{Vector{<:AbstractArray{T,1}}} is the current format of raw_all_forces

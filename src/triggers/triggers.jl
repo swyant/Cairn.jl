@@ -1,7 +1,8 @@
 export
     ActiveLearningTrigger,
     trigger_activated,
-    initialize_triggers
+    initialize_triggers,
+    perstep_reset!
 
 """
 Abstract type for defining criteria triggering the active learning step during simulation.
@@ -45,7 +46,7 @@ function initialize_triggers(triggers::Tuple, sys::Molly.System)
 
     if isnothing(sys.data)
       ddict = Dict{Any,Any}() #have to be flexible with types, user can do anything
-    elseif sys.data <: Dict
+    elseif typeof(sys.data) <: Dict
       ddict = Dict{Any,Any}(sys.data) # existing data dict may be too strictly typed
     else
       error("System.data needs to be either nothing or a dictionary")
@@ -67,7 +68,7 @@ function initialize_data(trigger,ddict)
 end
 
 # default does nothing
-function append_logers(trigger,loggers)
+function append_loggers(trigger,loggers)
     return loggers
 end
 
