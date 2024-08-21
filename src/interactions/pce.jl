@@ -4,7 +4,8 @@ import PotentialLearning: compute_local_descriptors, compute_force_descriptors
 export
     PolynomialChaos,
     eval_basis,
-    eval_grad_basis
+    eval_grad_basis,
+    get_params
 
 @doc raw"""
     PolynomialChaos{P, F, E} <: MLInteraction
@@ -56,7 +57,7 @@ function PolynomialChaos(
         p, d, params, BasisFamily,
         bas, gbas, xscl,
         force_units, energy_units,
-    )    
+    )
 
 end
 
@@ -84,7 +85,10 @@ end
     return SVector{2}(forces .* inter.force_units)
 end
 
-
+# This should be eventually standardized w/ AtomsCalculators
+function get_params(mlip)
+    params = mlip.params
+end
 
 ## functions for constructing the polynomial basis
 function construct_basis(p::Int, d::Int, BasisFamily)

@@ -105,3 +105,12 @@ function compute_all_forces(sys::AbstractSystem, cmte_pot::CommitteePotential)
 
   all_forces
 end
+
+
+function get_params(cmte_pot::CommitteePotential)
+  all_params = Float64[]
+  for member in cmte_pot.members
+    params = member.params
+    push!(all_params,params)
+  end
+end

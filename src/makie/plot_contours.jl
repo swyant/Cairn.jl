@@ -1,53 +1,3 @@
-import AtomsCalculators: potential_energy
-export coord_grid_2d, potential_grid_2d, plot_contours_2d
-
-
-## grid on 2d domain
-function coord_grid_2d(
-    limits::Vector{<:Vector},
-    step::Real;
-    dist_units = u"nm"
-)
-    xcoord = Vector(limits[1][1]:step:limits[1][2]) .* dist_units
-    ycoord = Vector(limits[2][1]:step:limits[2][2]) .* dist_units 
-    return [xcoord, ycoord]
-end
-
-
-## generic potential energy function with coord as argument
-function potential(inter, coord::SVector{2})
-    sys = let coords=[coord]; () -> [SVector{2}(coords)]; end # pseudo-struct
-    return potential_energy(sys, inter)
-end
-
-
-## grid across potential energy surface below cutoff
-function potential_grid_2d(
-    inter,
-    limits::Vector{<:Vector},
-    step::Real;
-    cutoff = nothing,
-    dist_units = u"nm",
-)
-    rng1, rng2 = coord_grid_2d(limits, step; dist_units=dist_units)
-    coords = SVector[]
-
-    for i = 1:length(rng1)
-        for j = 1:length(rng2)
-            coord = SVector{2}([rng1[i],rng2[j]])
-            Vij = ustrip(potential(inter, coord))
-            if typeof(cutoff) <: Real && Vij <= cutoff
-                append!(coords, [coord])
-            elseif typeof(cutoff) <: Vector && cutoff[1] <= Vij <= cutoff[2]
-                append!(coords, [coord])
-            end
-        end
-    end
-
-    return coords
-end
-
-
 # general function for plotting contours in 2d
 function plot_contours_2d(
     eval_function::Function,
@@ -61,7 +11,7 @@ function plot_contours_2d(
 )
 
     xcoords, ycoords = coord_grid
-    mx = length(xcoords) 
+    mx = length(xcoords)
     my = length(ycoords)
     V_surf = Matrix{Float64}(undef, (mx,my))
     for i = 1:mx
@@ -79,7 +29,7 @@ function plot_contours_2d(
     end
 
     fig = Figure(resolution = res)
-    ax = Axis(fig[1, 1][1, 1], 
+    ax = Axis(fig[1, 1][1, 1],
             xlabel="x1", ylabel="x2",
             limits=(
             ustrip(xcoords[1]),
@@ -101,7 +51,7 @@ function plot_contours_2d(
     elseif lvls == "log10"
         lvls = exp.(LinRange(log(cutoffs[1]), log(cutoffs[2]), 20))
     end
-    
+
     if fill==true && cutoffs != [-Inf, Inf]
         ct = contourf!(ax, ustrip.(xcoords), ustrip.(ycoords), V_surf .+ 1e-16, levels=lvls, extendlow=:auto)
         # tightlimits!(ax)
@@ -178,7 +128,7 @@ function plot_basis(
     )
 
     xcoords, ycoords = coord_grid
-    mx = length(xcoords) 
+    mx = length(xcoords)
     my = length(ycoords)
     N = length(pce.basis)
     Mset = Cairn.TotalDegreeMset(pce.p, pce.d)
@@ -198,7 +148,7 @@ function plot_basis(
         M = Mset[n]
 
         figs[n] = Figure(resolution = (700, 600))
-        axs[n] = Axis(figs[n][1, 1][1, 1], 
+        axs[n] = Axis(figs[n][1, 1][1, 1],
                     xlabel="x1", ylabel="x2",
                     limits=(
                         ustrip(xcoords[1]),
@@ -227,4 +177,4 @@ function plot_basis(
     end
     return figs
 end
-        
+

@@ -69,11 +69,10 @@ end
 
 function trigger_activated!(trigger::CmteTrigger{Q,F,T},
                             sys::Molly.System,
-                            al,
-                            step_n::Integer=0;
+                            al;
                             shared_cmte_pot::Union{Nothing,CommitteePotential}=nothing,
                             cache_field=nothing) where {Q,F,T}
-
+    step_n = al.cache[:step_n]
     #Select commitee potential : shared_cmte_pot > trigger.cmte_pot > sys.general_inters[1]
     if !isnothing(shared_cmte_pot)
         cmte_pot = shared_cmte_pot # prefer over CmteTrigger.cmte_pot
@@ -101,6 +100,18 @@ end
 function reset_logger!(trigger::CmteTrigger, sys::Molly.System)
     if !isnothing(trigger.logger_spec)
         reset_observable!(sys.loggers[trigger.logger_spec[1]])
+    end
+end
+
+function get_logger_ids(trigger::CmteTrigger; from_shared=false)
+    if !isnothing(trigger.logger_spec)
+        if from_shared
+            return trigger.logger_spec[1]
+        else
+            return (trigger.logger_spec[1],)
+        end
+    else
+        return nothing
     end
 end
 
@@ -170,10 +181,11 @@ function initialize_data(shared_trigger::SharedCmteTrigger, ddict::Dict)
     else
         return ddict
     end
-  end
+end
 
 
-function trigger_activated!(shared_trigger::SharedCmteTrigger, sys::Molly.System, al, step_n::Integer=0)
+function trigger_activated!(shared_trigger::SharedCmteTrigger, sys::Molly.System, al)
+
     # Assuming shared cmte pot is either referenced in SharedCmteTrigger (first priority), or is sys.general_inters[1]
     if !isnothing(shared_trigger.cmte_pot)
         shared_cmte_pot = shared_trigger.cmte_pot
@@ -190,11 +202,11 @@ function trigger_activated!(shared_trigger::SharedCmteTrigger, sys::Molly.System
     for subtrigger in shared_trigger.subtriggers
       #How to pass appropriate cache field for custom Committee QoIs
         if typeof(subtrigger.cmte_qoi) <: Union{CmteForces, CmteFlatForces}
-            res = trigger_activated!(subtrigger,sys, al, step_n; shared_cmte_pot=shared_cmte_pot, cache_field=shared_trigger.force_cache_field)
+            res = trigger_activated!(subtrigger,sys, al; shared_cmte_pot=shared_cmte_pot, cache_field=shared_trigger.force_cache_field)
         elseif typeof(subtrigger.cmte_qoi) <: CmteEnergy
-            res = trigger_activated!(subtrigger,sys, al, step_n; shared_cmte_pot=shared_cmte_pot, cache_field=shared_trigger.energy_cache_field)
+            res = trigger_activated!(subtrigger,sys, al; shared_cmte_pot=shared_cmte_pot, cache_field=shared_trigger.energy_cache_field)
         else
-            res = trigger_activated!(subtrigger,sys, al, step_n; shared_cmte_pot=shared_cmte_pot.cmte_pot)
+            res = trigger_activated!(subtrigger,sys, al; shared_cmte_pot=shared_cmte_pot.cmte_pot)
         end
         push!(all_res, res)
     end
@@ -205,6 +217,12 @@ end
 
 function reset_logger!(shared_trigger::SharedCmteTrigger, sys::Molly.System)
     for subtrigger in shared_trigger.subtriggers
-      reset_logger!(subtrigger,sys)
+        reset_logger!(subtrigger,sys)
     end
-  end
+end
+
+function get_logger_ids(shared_trigger::SharedCmteTrigger)
+    trigger_ids = [get_logger_ids(subtrigger;from_shared=true)
+                  for subtrigger in shared_trigger.subtriggers]
+    Tuple(trigger_ids)
+end

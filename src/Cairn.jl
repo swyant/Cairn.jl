@@ -56,4 +56,5 @@ include("activelearning/activelearning.jl")
 
 include("subsetselection/subsetselector.jl") # TODO: migrate to PotentialLearning
 
+include("makie/utilities.jl") # need utility functions for setting up integrator
 end
