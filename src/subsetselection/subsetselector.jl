@@ -3,6 +3,9 @@ import PotentialLearning: SubsetSelector
 include("gpvariance.jl")
 include("maxvol.jl")
 include("kmeans.jl")
+include("greedyselector.jl")
+
+export update_trainset!
 
 struct CurrentEnsemble <: SubsetSelector
 end

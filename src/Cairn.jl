@@ -10,7 +10,7 @@ Notes: Enhanced sampling algorithms for the active learning of machine learning 
 
 module Cairn
 
-using LinearAlgebra 
+using LinearAlgebra
 using Statistics
 using StatsBase
 using StaticArrays
@@ -52,10 +52,8 @@ include("training/committee_learning_problems.jl")
 
 include("loggers/loggers.jl")
 
-include("subsetselection/subsetselector.jl") # TODO: migrate to PotentialLearning
-
 include("activelearning/activelearning.jl")
 
-
+include("subsetselection/subsetselector.jl") # TODO: migrate to PotentialLearning
 
 end

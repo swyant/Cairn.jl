@@ -2,7 +2,8 @@ import PotentialLearning: SubsetSelector, LearningProblem
 export
     ActiveLearnRoutine,
     update_sys,
-    compute_error_metrics!
+    compute_error_metrics!,
+    ALRoutine
 
 
 """
@@ -11,7 +12,7 @@ export
 Struct containing all parameters required to trigger retraining during simulation.
 
 # Arguments
-- `ref :: Union{GeneralInteraction, PairwiseInteraction}` : reference (ground truth) potential 
+- `ref :: Union{GeneralInteraction, PairwiseInteraction}` : reference (ground truth) potential
 - `mlip :: MLInteraction` : machine learning (surrogate) potential)
 - `sys_train :: Vector{<:System}` : ensemble of systems representing the training data
 - `eval_int` : Integrator specifying mode of integration
@@ -25,12 +26,12 @@ Struct containing all parameters required to trigger retraining during simulatio
 - `param_hist :: Vector{<:Vector} = [mlip.params]` : vector of the parameter history
 - `kwargs...` : additional keyword arguments for `update_func` and `train_func`
 
-""" 
+"""
 
 mutable struct ActiveLearnRoutine
     ref # :: Union{GeneralInteraction, PairwiseInteraction}
     mlip :: MLInteraction
-    trainset :: Vector{<:System} 
+    trainset :: Vector{<:System}
     triggers :: Tuple # <: ActiveLearningTrigger
     ss :: SubsetSelector
     lp :: LearningProblem
@@ -60,9 +61,55 @@ function ActiveLearnRoutine(;
     return ActiveLearnRoutine(ref, mlip, trainset, triggers, ss, lp, aldata)
 end
 
+mutable struct ALRoutine
+    ref
+    mlip
+    trainset
+    triggers
+    ss
+    lp
+    trigger_updates
+    sim_update
+    aldata_spec
+    cache::Dict
 
+    #currently, only purpose is to ensure lp is concrete w/o resorting to type parameter
+    function ALRoutine( ref,
+                        mlip,
+                        trainset,
+                        triggers,
+                        ss,
+                        lp,
+                        trigger_updates,
+                        sim_update,
+                        aldata_spec)
 
+        cache = initialize_al_cache()
+        alroutine = new(ref,mlip,trainset,triggers,ss,lp,trigger_updates,sim_update,aldata_spec,cache)
+        alroutine
+    end
+end
 
+function initialize_al_cache()
+    cache_dict = Dict()
+    cache_dict[:step_n] = nothing
+    cache_dict[:trainset_changes] = nothing
+    cache_dict
+  end
+
+function ALRoutine(;
+                    ref=nothing,
+                    mlip=nothing,
+                    trainset=nothing,
+                    triggers=nothing,
+                    ss=nothing,
+                    lp=nothing,
+                    trigger_updates=nothing,
+                    sim_updates=nothing,
+                    aldata_spec=nothing)
+    alroutine = ALRoutine(ref,mlip,trainset,triggers,ss,lp,trigger_updates,sim_updates,aldata_spec)
+    alroutine
+end
 
 """
     update_sys(sim::Simulator)
@@ -77,13 +124,13 @@ Performs online active learning by molecular dynamics simulation defined in `sim
 # Keyword Arguments
 - `n_add::Integer=10` : number of samples to add to `sys_train`
 - `steps::Integer=1000` : number of steps in the sample path over which to draw new training data
-    
+
 """
 function update_sys(sim::OverdampedLangevin,
     sys::System,
     sys_train::Vector{<:System};
-    n_add=10,    
-    steps=1000,         
+    n_add=10,
+    steps=1000,
 )
     coords = sys.loggers.coords.history[end:-1:(end-steps)]
     coords_new = StatsBase.sample(coords, n_add; replace=false)
@@ -103,10 +150,10 @@ end
 
 function update_sys(sim::SteinRepulsiveLangevin,
     sys::System,
-    sys_train::Vector{<:System};    
-    kwargs...           
+    sys_train::Vector{<:System};
+    kwargs...
 )
-    sys_new = remove_loggers(sys)   
+    sys_new = remove_loggers(sys)
     # sim.sys_fix = reduce(vcat, [sim.sys_fix[2:end], sys_new]) # update repulsive set
     sys_train = reduce(vcat, [sys_train, sys_new]) # update training data
 
@@ -115,9 +162,9 @@ end
 
 
 function update_sys(sim::StochasticSVGD,
-    ens::Vector{<:System}, 
-    sys_train::Vector{<:System};    
-    kwargs...          
+    ens::Vector{<:System},
+    sys_train::Vector{<:System};
+    kwargs...
 )
     ens_new = [remove_loggers(sys) for sys in ens]
     sys_train = reduce(vcat, [sys_train, ens_new]) # update training data
