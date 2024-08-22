@@ -88,6 +88,15 @@ num_cmte_max_force = CmteFlatForces((coord_and_atom = (x -> maximum(abs.(x))   )
                                      strip_units = true
                                     )
 
+struct DummyALRoutine
+    cache::Dict
+    function DummyALRoutine()
+        cache_dict = Dict()
+        dummy_alroutine = new(cache_dict)
+        dummy_alroutine
+    end
+end
+
 @testset "Basic SimpleTriggerLogger Tests" begin
     simple_logger1 = SimpleTriggerLogger()
     @test typeof(simple_logger1) <: SimpleTriggerLogger{Float64}
@@ -223,17 +232,21 @@ end
     main_sys = System(base_sys1;
                        loggers = (pe=PotentialEnergyLogger(1),))
 
+    dummy_alroutine = DummyALRoutine()
+    dummy_alroutine.cache[:step_n] = 1
+
     # checking trigger comparing a Unitful.quantity returns true/false when appropriate, checking that SimpleTriggerLogger is appropriately modified
     mean_e_trigger = CmteTrigger(mean_energy, >, 100.0u"kJ*mol^-1";
                                  cmte_pot = cmte_pot1,
                                  logger_spec = (:cmte_mean_energy, 1))
     msys1_w_trigg = initialize_triggers((mean_e_trigger,),main_sys)
     @test compute(mean_energy,base_sys1,cmte_pot1) ≈ 26.946218132558347u"kJ*mol^-1"
-    @test trigger_activated!(mean_e_trigger, msys1_w_trigg, nothing, 1) == false
+    @test trigger_activated!(mean_e_trigger, msys1_w_trigg, dummy_alroutine) == false
     @test msys1_w_trigg.loggers[:cmte_mean_energy].observable ≈ 26.946218132558347u"kJ*mol^-1"
     msys1_w_trigg.coords = [SVector{2}(xcoords2*u"nm")] # same coords as base_sys2
     @test compute(mean_energy,base_sys2,cmte_pot1) ≈ 238.62856102151517u"kJ*mol^-1"
-    @test trigger_activated!(mean_e_trigger, msys1_w_trigg, nothing, 2) == true
+    dummy_alroutine.cache[:step_n] = 2
+    @test trigger_activated!(mean_e_trigger, msys1_w_trigg, dummy_alroutine) == true
     @test msys1_w_trigg.loggers[:cmte_mean_energy].observable ≈ 238.62856102151517u"kJ*mol^-1"
     @test msys1_w_trigg.loggers[:cmte_mean_energy].history ≈ [26.946218132558347,238.62856102151517]u"kJ*mol^-1"
     @test length(msys1_w_trigg.loggers[:pe].history) == 0
@@ -244,41 +257,52 @@ end
     mean_s_e_trigger = CmteTrigger(mean_energy_stripped, >, 100.0;
                                   cmte_pot = cmte_pot1,
                                   logger_spec = (:cmte_mean_energy, 2))
+
+    dummy_alroutine.cache[:step_n] = 1
     msys2_w_trigg = initialize_triggers((mean_s_e_trigger,),main_sys)
     @test compute(mean_energy_stripped,base_sys1,cmte_pot1) ≈ 26.946218132558347
-    @test trigger_activated!(mean_s_e_trigger, msys2_w_trigg, nothing, 1) == false
+    @test trigger_activated!(mean_s_e_trigger, msys2_w_trigg, dummy_alroutine) == false
     @test msys2_w_trigg.loggers[:cmte_mean_energy].observable ≈ 26.946218132558347
     msys2_w_trigg.coords = [SVector{2}(xcoords2*u"nm")]
     @test compute(mean_energy_stripped,base_sys2,cmte_pot1) ≈ 238.62856102151517
-    @test trigger_activated!(mean_s_e_trigger, msys2_w_trigg, nothing, 2) == true
+    dummy_alroutine.cache[:step_n] = 2
+    @test trigger_activated!(mean_s_e_trigger, msys2_w_trigg, dummy_alroutine) == true
     @test msys2_w_trigg.loggers[:cmte_mean_energy].observable ≈ 238.62856102151517
     @test msys2_w_trigg.loggers[:cmte_mean_energy].history ≈ [238.62856102151517,]
 
     # check that integer comparison works, also lt operator instead of gt operator. No loggers
     num_cmte_trigger = CmteTrigger(num_cmte_large_forces, <, 4;
                                    cmte_pot = cmte_pot1)
+
+    dummy_alroutine.cache[:step_n] = 1
     msys3_w_trigg = initialize_triggers((num_cmte_trigger,),main_sys)
     @test compute(num_cmte_large_forces,base_sys1,cmte_pot1) == 4
-    @test trigger_activated!(num_cmte_trigger,msys3_w_trigg,nothing,1) == false
+    @test trigger_activated!(num_cmte_trigger,msys3_w_trigg,dummy_alroutine) == false
     msys3_w_trigg.coords = [SVector{2}(xcoords2*u"nm")]
     @test compute(num_cmte_large_forces,base_sys2,cmte_pot1) == 1
-    @test trigger_activated!(num_cmte_trigger,msys3_w_trigg,nothing,2) == true
+    dummy_alroutine.cache[:step_n] = 2
+    @test trigger_activated!(num_cmte_trigger,msys3_w_trigg,dummy_alroutine) == true
 
     # check a boolean comparison, == operator
     all_cmte_trigger = CmteTrigger(all_cmte_large_forces,==,false;
                                    cmte_pot = cmte_pot1)
+
+    dummy_alroutine.cache[:step_n] = 1
     msys4_w_trigg = initialize_triggers((all_cmte_trigger,),main_sys)
     @test compute(all_cmte_large_forces,base_sys1,cmte_pot1) == true
-    @test trigger_activated!(all_cmte_trigger,msys4_w_trigg,nothing,1) == false
+    @test trigger_activated!(all_cmte_trigger,msys4_w_trigg,dummy_alroutine) == false
     msys4_w_trigg.coords = [SVector{2}(xcoords2*u"nm")]
     @test compute(all_cmte_large_forces,base_sys2,cmte_pot1) == false
-    @test trigger_activated!(all_cmte_trigger,msys4_w_trigg,nothing,2) == true
+    dummy_alroutine.cache[:step_n] = 2
+    @test trigger_activated!(all_cmte_trigger,msys4_w_trigg,dummy_alroutine) == true
+
+    dummy_alroutine.cache[:step_n] = 1
 
     # User must ensure that return time of cmte_qoi is the same as the threshold
     trigger_bad = CmteTrigger(mean_energy,<,0.0; # mean_energy returns Unitful.Quantity, but threshold is Float64
                               cmte_pot = cmte_pot1)
     msys_bad = initialize_triggers((trigger_bad,),main_sys)
-    @test_throws "return type of compute(cmte_qoi,...) is not the same type" trigger_activated!(trigger_bad,msys_bad,nothing,1)
+    @test_throws "return type of compute(cmte_qoi,...) is not the same type" trigger_activated!(trigger_bad,msys_bad,dummy_alroutine)
 
     # Testing that the appropriate cmte_pot is used.
     # If trigger has cmte_pot, that will take precedence, otherwise fall back to general_inters cmte_pot
@@ -294,19 +318,19 @@ end
 
     # don't really need to initialize_trigger here but that's the normal process so just in case
     sys_w_cmte_1 = initialize_triggers((alt_mean_e_trigger1,),sys_w_cmte)
-    @test trigger_activated!(alt_mean_e_trigger1,sys_w_cmte_1,nothing,1) == false # because value should be 26.9 using cmte_pot1
+    @test trigger_activated!(alt_mean_e_trigger1,sys_w_cmte_1,dummy_alroutine) == false # because value should be 26.9 using cmte_pot1
     sys_w_cmte_2 = initialize_triggers((alt_mean_e_trigger2,),sys_w_cmte)
-    @test trigger_activated!(alt_mean_e_trigger2,sys_w_cmte_2,nothing,1) == true # because value should be -9510, using cmte_pot2
+    @test trigger_activated!(alt_mean_e_trigger2,sys_w_cmte_2,dummy_alroutine) == true # because value should be -9510, using cmte_pot2
 
     # neither trigger nor general_inters has committee potential, so should throw error
     sys_wo_cmte = initialize_triggers((alt_mean_e_trigger2,),main_sys)
-    @test_throws "No committee potential available for trigger activation" trigger_activated!(alt_mean_e_trigger2, sys_wo_cmte,nothing,1)
+    @test_throws "No committee potential available for trigger activation" trigger_activated!(alt_mean_e_trigger2, sys_wo_cmte,dummy_alroutine)
 
     # What if you want to log an intermediate trigger-related QoI. Don't provide an easy way for that...
     # In theory could register a standard logger with the intermediate QoI, and could add a cache field to the regular cmte_trigger
 end
 
-@testset "CmteTrigger Tests" begin
+@testset "SharedCmteTrigger Tests" begin
 
     #### basic constructor tests
     trigg1 = CmteTrigger(mean_energy,>,100.0u"kJ*mol^-1";
@@ -413,42 +437,51 @@ end
                             loggers = (pe=PotentialEnergyLogger(1),))
     msys_main = initialize_triggers((sct2,),msys_main_init)
 
+    dummy_alroutine = DummyALRoutine()
+    dummy_alroutine.cache[:step_n] = 1
+
     # first case (base_sys1), all triggers should be false. Timestep=1
     @test compute(sct2.subtriggers[1].cmte_qoi,base_sys1,cmte_pot1) ≈ 26.946218132558347u"kJ*mol^-1"
     @test compute(sct2.subtriggers[2].cmte_qoi,base_sys1,cmte_pot1) ≈ 177.85936562044168u"kJ*mol^-1*nm^-1"
     @test compute(sct2.subtriggers[3].cmte_qoi,base_sys1,cmte_pot1) == 0
 
-    @test trigger_activated!(sct2,msys_main,nothing,1) == false
+    @test trigger_activated!(sct2,msys_main,dummy_alroutine) == false
     @test msys_main.loggers[:cmte_mean_energy].observable ≈ 26.946218132558347u"kJ*mol^-1"
     @test msys_main.loggers[:mean_std_fcomp].observable ≈ 177.85936562044168u"kJ*mol^-1*nm^-1"
 
     # second case (base_sys2), only first trigger should be true, but overall trigger_activated will be true. Timestep=2
     msys_main.coords = [SVector{2}(xcoords2*u"nm")]
+    dummy_alroutine.cache[:step_n] = 2
+
     @test compute(sct2.subtriggers[1].cmte_qoi,base_sys2,cmte_pot1) ≈ 238.62856102151517u"kJ*mol^-1"
     @test compute(sct2.subtriggers[2].cmte_qoi,base_sys2,cmte_pot1) ≈ 192.1288782829269u"kJ*mol^-1*nm^-1"
     @test compute(sct2.subtriggers[3].cmte_qoi,base_sys2,cmte_pot1) == 0
 
-    @test trigger_activated!(sct2,msys_main,nothing,2) == true
+    @test trigger_activated!(sct2,msys_main,dummy_alroutine) == true
     @test msys_main.loggers[:cmte_mean_energy].observable ≈ 238.62856102151517u"kJ*mol^-1"
     @test msys_main.loggers[:mean_std_fcomp].observable ≈ 192.1288782829269u"kJ*mol^-1*nm^-1"
 
     # third case (base_sys3), only second trigger should be true, but overall trigger_activated will be true. Timestep=3
     msys_main.coords = [SVector{2}(xcoords3*u"nm")]
+    dummy_alroutine.cache[:step_n] = 3
+
     @test compute(sct2.subtriggers[1].cmte_qoi,base_sys3,cmte_pot1) ≈ 57.33819859375001u"kJ*mol^-1"
     @test compute(sct2.subtriggers[2].cmte_qoi,base_sys3,cmte_pot1) ≈ 235.51275490040797u"kJ*mol^-1*nm^-1"
     @test compute(sct2.subtriggers[3].cmte_qoi,base_sys3,cmte_pot1) == 0
 
-    @test trigger_activated!(sct2,msys_main,nothing,3) == true
+    @test trigger_activated!(sct2,msys_main,dummy_alroutine) == true
     @test msys_main.loggers[:cmte_mean_energy].observable ≈ 57.33819859375001u"kJ*mol^-1"
     @test msys_main.loggers[:mean_std_fcomp].observable ≈ 235.51275490040797u"kJ*mol^-1*nm^-1"
 
     # fourth case (base_sys4), only second trigger should be true, but overall trigger_activated will be true. Timestep=4
     msys_main.coords = [SVector{2}(xcoords4*u"nm")]
+    dummy_alroutine.cache[:step_n] = 4
+
     @test compute(sct2.subtriggers[1].cmte_qoi,base_sys4,cmte_pot1) ≈ 3142.4504457812504u"kJ*mol^-1"
     @test compute(sct2.subtriggers[2].cmte_qoi,base_sys4,cmte_pot1) ≈ 1122.792294408608u"kJ*mol^-1*nm^-1"
     @test compute(sct2.subtriggers[3].cmte_qoi,base_sys4,cmte_pot1) == 4
 
-    @test trigger_activated!(sct2,msys_main,nothing,4) == true
+    @test trigger_activated!(sct2,msys_main,dummy_alroutine) == true
     @test msys_main.loggers[:cmte_mean_energy].observable ≈ 3142.4504457812504u"kJ*mol^-1"
     @test msys_main.loggers[:mean_std_fcomp].observable ≈ 1122.792294408608u"kJ*mol^-1*nm^-1"
 
@@ -470,8 +503,10 @@ end
 
     msys_wcmtepot_sct2 = initialize_triggers((sct2,), msys_wcmtepot_init)
 
+    dummy_alroutine.cache[:step_n] = 1
+
     #see above lines for compute with sct2.subtrigger's for expected values, trigger_activated!() should return false
-    @test trigger_activated!(sct2,msys_wcmtepot_sct2,nothing,1) == false
+    @test trigger_activated!(sct2,msys_wcmtepot_sct2,dummy_alroutine) == false
     @test msys_wcmtepot_sct2.loggers[:cmte_mean_energy].observable ≈ 26.946218132558347u"kJ*mol^-1"
     @test msys_wcmtepot_sct2.loggers[:mean_std_fcomp].observable ≈ 177.85936562044168u"kJ*mol^-1*nm^-1"
 
@@ -482,7 +517,7 @@ end
     @test compute(sct1.subtriggers[2].cmte_qoi,base_sys1,cmte_pot2) ≈ 5233.7395880969u"kJ*mol^-1*nm^-1"
     @test compute(sct1.subtriggers[3].cmte_qoi,base_sys1,cmte_pot2) == 4
 
-    @test trigger_activated!(sct1,msys_wcmtepot_sct1,nothing,1) == true
+    @test trigger_activated!(sct1,msys_wcmtepot_sct1,dummy_alroutine) == true
     @test msys_wcmtepot_sct1.loggers[:cmte_mean_energy].observable ≈ -9510.118425779501u"kJ*mol^-1"
     @test msys_wcmtepot_sct1.loggers[:mean_std_fcomp].observable ≈ 5233.7395880969u"kJ*mol^-1*nm^-1"
 
@@ -497,7 +532,7 @@ end
     sct_alt = SharedCmteTrigger((trigg1_alt,trigg2_alt))
 
     simple_sys = initialize_triggers((sct_alt,),simple_sys_init)
-    @test_throws "SharedCmteTrigger cannot be used if neither" trigger_activated!(sct1,simple_sys,nothing,1)
+    @test_throws "SharedCmteTrigger cannot be used if neither" trigger_activated!(sct1,simple_sys,dummy_alroutine)
 
 
 
@@ -506,7 +541,7 @@ end
     # using msys_existing_data1 and sct3 w/ cache fields.
     # after trigger_activated!(), cache fields should be populated and will persist until
     msys_cache_test = initialize_triggers((sct3,), msys_existing_data1)
-    trigger_activated!(sct3,msys_cache_test,nothing,1)
+    trigger_activated!(sct3,msys_cache_test,dummy_alroutine)
 
     @test msys_cache_test.data[:cmte_energies] ≈ [16.894988694723455,
                                                        174.92114032265883,
