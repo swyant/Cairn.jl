@@ -1,4 +1,5 @@
 using Cairn
+using PotentialLearning: learn!
 using Molly
 using AtomisticQoIs
 using SpecialPolynomials: Jacobi
@@ -196,16 +197,17 @@ end
     #### initializing relevant cmte_pot
     cmte_pot_template = CommitteePotential([deepcopy(pce_template) for _ in 1:4], 1)
 
-    ref_clp = SubsampleAppendCmteRetrain(InefficientLearningProblem(;ref=ref),
+    ref_clp_template = SubsampleAppendCmteRetrain(InefficientLearningProblem(;ref=ref),
                                      [[4,13,3,19,11,14,5,8,15,12,16,9,18,17],  # 14 indices per committee
                                      [8,11,12,20,16,18,4,3,1,9,10,14,6,7],
                                      [17,14,18,9,11,16,12,3,8,20,13,19,6,7],
                                      [17,1,4,16,9,2,15,7,20,10,6,5,14,19]])
 
-    ref_cmte_pot = learn(ref_clp,cmte_pot_template,trainset)
+    ref_cmte_pot_template = learn(ref_clp_template,cmte_pot_template,trainset)
+    ref_clp = deepcopy(ref_clp_template)
 
-    check_cmte_pot = deepcopy(ref_cmte_pot)
-    check_clp = deepcopy(ref_clp)
+    check_cmte_pot = deepcopy(ref_cmte_pot_template)
+    check_clp = deepcopy(ref_clp_template)
 
     ### reference committee potential train with new configs
 
@@ -215,7 +217,7 @@ end
     new_systems = Ensemble(ref,xnew)
     new_trainset = reduce(vcat, [trainset, new_systems])
 
-    ref_updated_cmte_pot = learn!(ref_clp,ref_cmte_pot,length(new_systems),new_trainset)
+    ref_updated_cmte_pot = learn!(ref_clp,ref_cmte_pot_template,length(new_systems),new_trainset)
     @test all([indices[end-2:end] for indices in ref_clp.cmte_indices] .== Ref([21,22,23]))
     # as always, these tests can be modified to if this is a bit of a fragile approach
     @test all([member.params for member in ref_updated_cmte_pot.members] .≈ [[-203.08410824815675, 816.7427491527678, -460.2407047701491, -579.8590258737155, -78.88841605027702,
@@ -244,4 +246,84 @@ end
                                                                             -201.4098287401222, -533.9467954649637, 1976.965230521249, -1512.687307437898, 721.8023707778311],
                                                                            [16.252835550456563, -1040.1012178913475, 1451.4744245744116, 1243.3755712378018, -1747.732512005455,
                                                                             -335.33576592976954, -1623.369161716008, 2379.6773343675736, -564.6135281491161, 375.1589206509789]])
+
+    ### update_trigger test with CmteTrigger
+    check_cmte_trigger = CmteTrigger(mean_energy,>,100.0u"kJ*mol^-1";
+                                     cmte_pot = deepcopy(ref_cmte_pot_template),
+                                     logger_spec=(:cmte_mean_energy, 1))
+
+    update_test_al1 = ALRoutine(;trainset=new_trainset,
+                                 triggers=(check_cmte_trigger,),
+                                 trigger_updates=(deepcopy(ref_clp_template),)
+                                )
+    update_test_al1.cache[:trainset_changes] = new_systems
+
+    new_triggers1 = update_triggers!(update_test_al1.triggers,
+                                     update_test_al1.trigger_updates,
+                                     main_msys_copy3,
+                                     update_test_al1)
+
+    @test new_triggers1[1].cmte_qoi == mean_energy
+    @test new_triggers1[1].compare == >
+    @test new_triggers1[1].thresh == 100.0u"kJ*mol^-1"
+    @test all([member.params for member in new_triggers1[1].cmte_pot.members] .≈ [[-203.08410824815675, 816.7427491527678, -460.2407047701491, -579.8590258737155, -78.88841605027702,
+                                                                                 479.09854489024167, -295.464884104602, 1032.015001081525, -1106.9150704740443, 393.7335304371087],
+                                                                                [-170.10514324571412, 663.3863637588346, -323.08457833791846, -625.1906994221896, 80.96559584975009,
+                                                                                 321.3751699104648, -288.4352742841502, 933.611430034781, -985.6173209444495, 338.84477894997883],
+                                                                                [-345.81438206263584, 836.194934487695, 3.7216046749122524, -1395.0108315072628, 354.7054366264242,
+                                                                                 -201.4098287401222, -533.9467954649637, 1976.965230521249, -1512.687307437898, 721.8023707778311],
+                                                                                [16.252835550456563, -1040.1012178913475, 1451.4744245744116, 1243.3755712378018, -1747.732512005455,
+                                                                                 -335.33576592976954, -1623.369161716008, 2379.6773343675736, -564.6135281491161, 375.1589206509789]])
+
+    @test all([indices[end-2:end] for indices in update_test_al1.trigger_updates[1].cmte_indices] .== Ref([21,22,23]))
+
+    #### update_trigger test with SharedCmteTrigger
+    subtrigger1 = CmteTrigger(mean_energy,>,100.0u"kJ*mol^-1";
+                              logger_spec=(:cmte_mean_energy, 1))
+    subtrigger2 = CmteTrigger(mean_std_fcomp, >, 200.0u"kJ*mol^-1*nm^-1";
+                             logger_spec=(:mean_std_fcomp,2))
+
+    check_sct_trigger = SharedCmteTrigger((subtrigger1,subtrigger2),deepcopy(ref_cmte_pot_template))
+
+    update_test_al2 = ALRoutine(;trainset=new_trainset,
+                                 triggers=(check_sct_trigger,),
+                                 trigger_updates=(deepcopy(ref_clp_template),))
+
+    update_test_al2.cache[:trainset_changes] = new_systems
+
+    new_triggers2 = update_triggers!(update_test_al2.triggers,
+                                     update_test_al2.trigger_updates,
+                                     main_msys_copy3,
+                                     update_test_al2)
+
+    @test new_triggers2[1].subtriggers[1].cmte_qoi == mean_energy
+    @test new_triggers2[1].subtriggers[1].compare == >
+    @test new_triggers2[1].subtriggers[1].thresh == 100.0u"kJ*mol^-1"
+
+    @test new_triggers2[1].subtriggers[2].cmte_qoi == mean_std_fcomp
+    @test new_triggers2[1].subtriggers[2].compare == >
+    @test new_triggers2[1].subtriggers[2].thresh == 200.0u"kJ*mol^-1*nm^-1"
+
+    @test all([member.params for member in new_triggers2[1].cmte_pot.members] .≈ [[-203.08410824815675, 816.7427491527678, -460.2407047701491, -579.8590258737155, -78.88841605027702,
+                                                                                 479.09854489024167, -295.464884104602, 1032.015001081525, -1106.9150704740443, 393.7335304371087],
+                                                                                [-170.10514324571412, 663.3863637588346, -323.08457833791846, -625.1906994221896, 80.96559584975009,
+                                                                                 321.3751699104648, -288.4352742841502, 933.611430034781, -985.6173209444495, 338.84477894997883],
+                                                                                [-345.81438206263584, 836.194934487695, 3.7216046749122524, -1395.0108315072628, 354.7054366264242,
+                                                                                 -201.4098287401222, -533.9467954649637, 1976.965230521249, -1512.687307437898, 721.8023707778311],
+                                                                                [16.252835550456563, -1040.1012178913475, 1451.4744245744116, 1243.3755712378018, -1747.732512005455,
+                                                                                 -335.33576592976954, -1623.369161716008, 2379.6773343675736, -564.6135281491161, 375.1589206509789]])
+
+
+    @test all([indices[end-2:end] for indices in update_test_al2.trigger_updates[1].cmte_indices] .== Ref([21,22,23]))
+
+end
+
+
+@testset "Trigger Update with SubsampleAppendCmteRetrain" begin
+
+    #=
+    What are the ingredients here?
+    - Trigger w/ cmte pot
+    -
+    =#
 end

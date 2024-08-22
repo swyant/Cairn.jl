@@ -33,7 +33,7 @@ function learn(ilp::InefficientLearningProblem, mlip, trainset; ref=ilp.ref)
     new_mlip
 end
 
-function retrain!(ilp::InefficientLearningProblem, sys::Molly.System, al::ALRoutine)
+function retrain!(ilp::InefficientLearningProblem, sys::Molly.System, al)
     # if this is a common pattern, then could just change the method handle in the AL loop
     # or have a generalized retrain!() that calls a more detailed retrain!() function
     trainset = al.trainset
@@ -145,7 +145,7 @@ function obtain_train_idxs(frac::Float64, train_subset_idxs::Vector{Int64})
 end
 
 # note that clp gets modified in place here
-function retrain!(clp::SubsampleAppendCmteRetrain, sys::Molly.System, al::ALRoutine)
+function retrain!(clp::SubsampleAppendCmteRetrain, sys::Molly.System, al)
     new_trainset = al.trainset
     num_new_configs = length(al.cache[:trainset_changes]) # hard assumption that this is just a list of new systems
     @assert typeof(al.mlip) <: CommitteePotential

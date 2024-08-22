@@ -2,7 +2,8 @@ export
     ActiveLearningTrigger,
     trigger_activated,
     initialize_triggers,
-    perstep_reset!
+    perstep_reset!,
+    update_triggers!
 
 """
 Abstract type for defining criteria triggering the active learning step during simulation.
@@ -35,26 +36,27 @@ function trigger_activated(
     end
 end
 
+
 function initialize_triggers(triggers::Tuple, sys::Molly.System)
     if typeof(sys.loggers) <: Tuple && length(sys.loggers) == 0  # if loggers is empty Tuple, convert to empty NamedTuple
-      loggers = NamedTuple()
+        loggers = NamedTuple()
     elseif typeof(sys.loggers) <: NamedTuple
-      loggers = sys.loggers
+        loggers = sys.loggers
     else
-      error("Can't handle a case where sys.loggers is Tuple with finite size, or anything other than NamedTuple")
+        error("Can't handle a case where sys.loggers is Tuple with finite size, or anything other than NamedTuple")
     end
 
     if isnothing(sys.data)
-      ddict = Dict{Any,Any}() #have to be flexible with types, user can do anything
+        ddict = Dict{Any,Any}() #have to be flexible with types, user can do anything
     elseif typeof(sys.data) <: Dict
-      ddict = Dict{Any,Any}(sys.data) # existing data dict may be too strictly typed
+        ddict = Dict{Any,Any}(sys.data) # existing data dict may be too strictly typed
     else
-      error("System.data needs to be either nothing or a dictionary")
+        error("System.data needs to be either nothing or a dictionary")
     end
 
     for trigger in triggers
-      loggers = append_loggers(trigger,loggers)
-      ddict   = initialize_data(trigger,ddict)
+        loggers = append_loggers(trigger,loggers)
+        ddict   = initialize_data(trigger,ddict)
     end
 
     return_sys = Molly.System(sys; loggers=loggers, data=ddict)
@@ -75,16 +77,16 @@ end
 function perstep_reset!(triggers, sys::Molly.System)
   # need an API to get whether trigger has associated logger and what the logger name is
   for trigger in triggers
-    reset_logger!(trigger,sys)
+      reset_logger!(trigger,sys)
   end
 
   if (typeof(sys.data) <: Dict &&
-    :_reset_every_step in keys(sys.data) &&
-    length(sys.data[:_reset_every_step]) > 0)
+      :_reset_every_step in keys(sys.data) &&
+      length(sys.data[:_reset_every_step]) > 0)
 
-    for dict_symb in sys.data[:_reset_every_step]
-      sys.data[dict_symb] = nothing
-    end
+      for dict_symb in sys.data[:_reset_every_step]
+          sys.data[dict_symb] = nothing
+      end
   end
 end
 
@@ -93,6 +95,19 @@ end
 function reset_logger!(trigger, sys::Molly.System)
 end
 
+function update_triggers!(triggers, updates, sys::Molly.System, al)
+    new_triggers = ActiveLearningTrigger[]
+    for (up,trigg) in zip(updates,triggers)
+        if !isnothing(up)
+            new_trigg = update_trigger!(up, trigg; sys=sys,al=al)
+            push!(new_triggers,new_trigg)
+        else
+            push!(new_triggers,trigg)
+        end
+    end
+
+    return Tuple(new_triggers)
+end
 
 include("timeinterval.jl")
 include("maxkernel.jl")

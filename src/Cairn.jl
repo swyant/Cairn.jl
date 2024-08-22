@@ -45,10 +45,10 @@ include("interactions/committee_qois.jl")
 
 include("simulators/simulators.jl")
 
-include("triggers/triggers.jl")
-
 include("training/training.jl")
 include("training/committee_learning_problems.jl")
+
+include("triggers/triggers.jl")
 
 include("loggers/loggers.jl")
 

@@ -43,6 +43,18 @@ function CmteTrigger(cmte_qoi,
     cmte_trigger
 end
 
+# need to use this trick https://stackoverflow.com/questions/40160120/generic-constructors-for-subtypes-of-an-abstract-type
+function (::Type{CmteTrigger{Q,F,T}})(trigger::CmteTrigger{Q,F,T};
+                                      cmte_qoi::Q=trigger.cmte_qoi,
+                                      compare::F=trigger.compare,
+                                      thresh::T=trigger.thresh,
+                                      cmte_pot::Union{Nothing,CommitteePotential}=trigger.cmte_pot,
+                                      logger_spec::Union{Nothing,Tuple{Symbol,Int64}}=trigger.logger_spec) where {Q<:AbstractCommitteeQoI, F<:Function, T}
+    #cmte_trigger = CmteTrigger{Q,F,T}(cmte_qoi,compare,thresh,cmte_pot,logger_spec) # compiler can't figure this out?
+    cmte_trigger = CmteTrigger(cmte_qoi,compare,thresh,cmte_pot,logger_spec)
+    cmte_trigger
+end
+
 # returns updated loggers, which is used to create an updated System copy in `initialize_triggers`
 function append_loggers(trigger::CmteTrigger{Q,F,T}, loggers::NamedTuple) where {Q,F,T}
 
@@ -143,6 +155,16 @@ function SharedCmteTrigger(subtriggers,
     shared_cmte_trigger
 end
 
+# I'm probably over-typing the arguments here. All the typing is taken care of by the inner constructor.
+function SharedCmteTrigger(trigger::SharedCmteTrigger;
+                           cmte_pot::Union{Nothing,CommitteePotential}=trigger.cmte_pot,
+                           subtriggers::Tuple{Vararg{CmteTrigger}}=trigger.subtriggers,
+                           energy_cache_field::Union{Nothing,Symbol} = trigger.energy_cache_field,
+                           force_cache_field::Union{Nothing,Symbol} = trigger.force_cache_field)
+    shared_cmte_trigger = SharedCmteTrigger(subtriggers,cmte_pot, energy_cache_field, force_cache_field)
+    shared_cmte_trigger
+end
+
 function append_loggers(shared_trigger::SharedCmteTrigger, loggers::NamedTuple)
     for subtrigger in shared_trigger.subtriggers
         loggers = append_loggers(subtrigger,loggers)
@@ -225,4 +247,26 @@ function get_logger_ids(shared_trigger::SharedCmteTrigger)
     trigger_ids = [get_logger_ids(subtrigger;from_shared=true)
                   for subtrigger in shared_trigger.subtriggers]
     Tuple(trigger_ids)
+end
+
+
+function update_trigger!(update::SubsampleAppendCmteRetrain,
+                         cmte_trigger::Union{CmteTrigger,SharedCmteTrigger};
+                         al,
+                         kwargs...)
+    old_cmte_pot = cmte_trigger.cmte_pot
+    if isnothing(old_cmte_pot)
+        @warn "Not actually updating CmteTrigger, assuming committee potential used for sys.general_inters and updated with retrain!()"
+        return cmte_trigger
+    else
+        new_trainset = al.trainset
+        num_new_configs = length(al.cache[:trainset_changes]) # hard assumption that this is just a list of new systems
+
+        new_cmte_pot = learn!(update, old_cmte_pot, num_new_configs, new_trainset) # clp modified in place
+
+        #is this kind of notation discouraged?
+        new_cmte_trigger = typeof(cmte_trigger)(cmte_trigger; cmte_pot=new_cmte_pot)
+
+        return new_cmte_trigger
+    end
 end
