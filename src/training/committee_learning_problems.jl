@@ -9,7 +9,9 @@ using Random: randperm
 export InefficientLearningProblem,
        AbstractCmteLearningProblem,
        SubsampleAppendCmteRetrain,
-       learn #different from learn!()
+       learn, #different from learn!()
+       retrain!
+
 
 
 # Recomputing all descriptors, energies, forces for entire trainset
@@ -27,6 +29,18 @@ function learn(ilp::InefficientLearningProblem, mlip, trainset; ref=ilp.ref)
     lp = learn!(trainset, ref, mlip, ilp.weights, ilp.intcpt; e_flag=true, f_flag=true)
     new_mlip = deepcopy(mlip) #How to generalize? Should mlip be modified in place
     new_mlip.params = lp.β
+
+    new_mlip
+end
+
+function retrain!(ilp::InefficientLearningProblem, sys::Molly.System, al::ALRoutine)
+    # if this is a common pattern, then could just change the method handle in the AL loop
+    # or have a generalized retrain!() that calls a more detailed retrain!() function
+    trainset = al.trainset
+    ref_pot = al.ref
+    mlip = al.mlip
+
+    new_mlip = learn(ilp,mlip,trainset;ref=ref_pot)
 
     new_mlip
 end
@@ -128,4 +142,16 @@ function obtain_train_idxs(frac::Float64, train_subset_idxs::Vector{Int64})
     rand_set_idxs = perm_idxs[begin:1:num_select]
 
     train_subset_idxs[rand_set_idxs]
+end
+
+# note that clp gets modified in place here
+function retrain!(clp::SubsampleAppendCmteRetrain, sys::Molly.System, al::ALRoutine)
+    new_trainset = al.trainset
+    num_new_configs = length(al.cache[:trainset_changes]) # hard assumption that this is just a list of new systems
+    @assert typeof(al.mlip) <: CommitteePotential
+    old_cmte_pot = al.mlip
+
+    new_cmte_pot = learn!(clp, old_cmte_pot, num_new_configs, new_trainset) # clp modified in place
+
+    new_cmte_pot
 end

@@ -155,3 +155,93 @@ end
     @test all(al_data["activated_trigger_logs"][:cmte_mean_energy] .≈ [26.946218132558347]*u"kJ*mol^-1")
     @test all(al_data["activated_trigger_logs"][:mean_std_fcomp] .≈ [177.85936562044168]*u"kJ*mol^-1*nm^-1")
 end
+
+@testset "retrain!() tests" begin
+    #### reference fit for standard PCE
+    ilp1 = InefficientLearningProblem(;ref=ref)
+    ref_pce = deepcopy(pce_template)
+
+    ref_fitted_pce = learn(ilp1,ref_pce,trainset)
+    @test ref_fitted_pce.params ≈ [-335.3750515214229,
+                                    615.4631933197177,
+                                    247.61997737909118,
+                                    -351.787767444939,
+                                    -976.3218308181512,
+                                    342.07362979908646,
+                                    -804.7445886595718,
+                                    2167.8887229673587,
+                                    -1363.034451052221,
+                                    539.6457680262732]
+
+    #### retrain!() test with standard PCE
+    retrain_test_al1 = ALRoutine(;ref=ref,
+                                  mlip=deepcopy(pce_template),
+                                  trainset=trainset,
+                                  lp=InefficientLearningProblem(;ref=ref))
+
+    main_msys_copy3 = deepcopy(main_msys)
+    fitted_pce = retrain!(retrain_test_al1.lp, main_msys_copy3, retrain_test_al1)
+    @test fitted_pce.params ≈ [-335.3750515214229,
+                               615.4631933197177,
+                               247.61997737909118,
+                               -351.787767444939,
+                               -976.3218308181512,
+                               342.07362979908646,
+                               -804.7445886595718,
+                               2167.8887229673587,
+                               -1363.034451052221,
+                               539.6457680262732]
+
+
+    #### initializing relevant cmte_pot
+    cmte_pot_template = CommitteePotential([deepcopy(pce_template) for _ in 1:4], 1)
+
+    ref_clp = SubsampleAppendCmteRetrain(InefficientLearningProblem(;ref=ref),
+                                     [[4,13,3,19,11,14,5,8,15,12,16,9,18,17],  # 14 indices per committee
+                                     [8,11,12,20,16,18,4,3,1,9,10,14,6,7],
+                                     [17,14,18,9,11,16,12,3,8,20,13,19,6,7],
+                                     [17,1,4,16,9,2,15,7,20,10,6,5,14,19]])
+
+    ref_cmte_pot = learn(ref_clp,cmte_pot_template,trainset)
+
+    check_cmte_pot = deepcopy(ref_cmte_pot)
+    check_clp = deepcopy(ref_clp)
+
+    ### reference committee potential train with new configs
+
+    xnew = [[0.40343423993326244, 0.4226044780958752],
+            [0.4173669601905878, 0.35463425253425607],
+            [0.38102227188501714, 0.4353723003822222]]
+    new_systems = Ensemble(ref,xnew)
+    new_trainset = reduce(vcat, [trainset, new_systems])
+
+    ref_updated_cmte_pot = learn!(ref_clp,ref_cmte_pot,length(new_systems),new_trainset)
+    @test all([indices[end-2:end] for indices in ref_clp.cmte_indices] .== Ref([21,22,23]))
+    # as always, these tests can be modified to if this is a bit of a fragile approach
+    @test all([member.params for member in ref_updated_cmte_pot.members] .≈ [[-203.08410824815675, 816.7427491527678, -460.2407047701491, -579.8590258737155, -78.88841605027702,
+                                                                            479.09854489024167, -295.464884104602, 1032.015001081525, -1106.9150704740443, 393.7335304371087],
+                                                                           [-170.10514324571412, 663.3863637588346, -323.08457833791846, -625.1906994221896, 80.96559584975009,
+                                                                            321.3751699104648, -288.4352742841502, 933.611430034781, -985.6173209444495, 338.84477894997883],
+                                                                           [-345.81438206263584, 836.194934487695, 3.7216046749122524, -1395.0108315072628, 354.7054366264242,
+                                                                            -201.4098287401222, -533.9467954649637, 1976.965230521249, -1512.687307437898, 721.8023707778311],
+                                                                           [16.252835550456563, -1040.1012178913475, 1451.4744245744116, 1243.3755712378018, -1747.732512005455,
+                                                                            -335.33576592976954, -1623.369161716008, 2379.6773343675736, -564.6135281491161, 375.1589206509789]])
+
+    ### retrain committee potential test
+    retrain_test_al2 = ALRoutine(;ref=ref,
+                                  mlip=check_cmte_pot,
+                                  trainset=new_trainset,
+                                  lp=check_clp)
+    retrain_test_al2.cache[:trainset_changes] = new_systems
+
+    check_updated_cmte_pot = retrain!(retrain_test_al2.lp, main_msys_copy3, retrain_test_al2)
+    @test all([indices[end-2:end] for indices in check_clp.cmte_indices] .== Ref([21,22,23]))
+    @test all([member.params for member in check_updated_cmte_pot.members] .≈ [[-203.08410824815675, 816.7427491527678, -460.2407047701491, -579.8590258737155, -78.88841605027702,
+                                                                            479.09854489024167, -295.464884104602, 1032.015001081525, -1106.9150704740443, 393.7335304371087],
+                                                                           [-170.10514324571412, 663.3863637588346, -323.08457833791846, -625.1906994221896, 80.96559584975009,
+                                                                            321.3751699104648, -288.4352742841502, 933.611430034781, -985.6173209444495, 338.84477894997883],
+                                                                           [-345.81438206263584, 836.194934487695, 3.7216046749122524, -1395.0108315072628, 354.7054366264242,
+                                                                            -201.4098287401222, -533.9467954649637, 1976.965230521249, -1512.687307437898, 721.8023707778311],
+                                                                           [16.252835550456563, -1040.1012178913475, 1451.4744245744116, 1243.3755712378018, -1747.732512005455,
+                                                                            -335.33576592976954, -1623.369161716008, 2379.6773343675736, -564.6135281491161, 375.1589206509789]])
+end
