@@ -36,6 +36,20 @@ function trigger_activated(
     end
 end
 
+# Alternative simple multiple trigger evaluation
+function trigger_activated!(triggers::Tuple{<:ActiveLearningTrigger}, sys::Molly.System, al)
+
+    # this approach runs through all triggers, even if an earlier trigger already returns true
+    # this ensures any later SimpleTriggerLoggers get logged
+    all_res = Bool[]
+    for trigger in triggers
+        res = trigger_activated!(trigger,sys,al)
+        push!(all_res,res)
+    end
+
+    final_res = any(all_res)
+    final_res
+end
 
 function initialize_triggers(triggers::Tuple, sys::Molly.System)
     if typeof(sys.loggers) <: Tuple && length(sys.loggers) == 0  # if loggers is empty Tuple, convert to empty NamedTuple

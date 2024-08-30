@@ -64,7 +64,7 @@ base_sys1 = System(ref,xcoords1)
 
 main_msys = System(base_sys1;
                    general_inters = (pce_higher_order,),
-                   loggers = (coords=CoordinateLogger(1),
+                   loggers = (coords=CoordinateLogger(1;dims=2),
                               pe=PotentialEnergyLogger(1)),
                     data = Dict(:example_field => 1.0)
                    )
@@ -203,7 +203,7 @@ end
                                      [17,14,18,9,11,16,12,3,8,20,13,19,6,7],
                                      [17,1,4,16,9,2,15,7,20,10,6,5,14,19]])
 
-    ref_cmte_pot_template = learn(ref_clp_template,cmte_pot_template,trainset)
+    ref_cmte_pot_template = learn(deepcopy(ref_clp_template),cmte_pot_template,trainset) #shouldn't modify the clp, but I'm copying just in case
     ref_clp = deepcopy(ref_clp_template)
 
     check_cmte_pot = deepcopy(ref_cmte_pot_template)
@@ -316,14 +316,4 @@ end
 
     @test all([indices[end-2:end] for indices in update_test_al2.trigger_updates[1].cmte_indices] .== Ref([21,22,23]))
 
-end
-
-
-@testset "Trigger Update with SubsampleAppendCmteRetrain" begin
-
-    #=
-    What are the ingredients here?
-    - Trigger w/ cmte pot
-    -
-    =#
 end

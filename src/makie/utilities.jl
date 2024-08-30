@@ -1,5 +1,7 @@
 import AtomsCalculators: potential_energy
-export coord_grid_2d, potential_grid_2d, plot_contours_2d
+export coord_grid_2d,
+       potential_grid_2d,
+       potential #TODO this is too valuable of a name to export for this utility
 
 
 ## grid on 2d domain

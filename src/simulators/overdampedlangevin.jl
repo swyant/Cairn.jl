@@ -7,7 +7,7 @@ function simulation_step!(sys::System,
     run_loggers=true,
     rng=Random.GLOBAL_RNG)
 
-    forces_t = forces(sys, neighbors; n_threads=n_threads)
+    forces_t = Molly.forces(sys, neighbors; n_threads=n_threads)
     accels_t = forces_t ./ masses(sys)
 
     noise = random_velocities(sys, sim.temperature; rng=rng)

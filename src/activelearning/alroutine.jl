@@ -73,16 +73,15 @@ mutable struct ALRoutine
     aldata_spec
     cache::Dict
 
-    #currently, only purpose is to ensure lp is concrete w/o resorting to type parameter
     function ALRoutine( ref,
                         mlip,
                         trainset,
                         triggers,
                         ss,
-                        lp,
+                        lp::Union{L,Nothing},
                         trigger_updates,
                         sim_update,
-                        aldata_spec)
+                        aldata_spec) where {L<:PotentialLearning.AbstractLearningProblem}
 
         cache = initialize_al_cache()
         alroutine = new(ref,mlip,trainset,triggers,ss,lp,trigger_updates,sim_update,aldata_spec,cache)
@@ -105,9 +104,9 @@ function ALRoutine(;
                     ss=nothing,
                     lp=nothing,
                     trigger_updates=nothing,
-                    sim_updates=nothing,
+                    sim_update=nothing,
                     aldata_spec=nothing)
-    alroutine = ALRoutine(ref,mlip,trainset,triggers,ss,lp,trigger_updates,sim_updates,aldata_spec)
+    alroutine = ALRoutine(ref,mlip,trainset,triggers,ss,lp,trigger_updates,sim_update,aldata_spec)
     alroutine
 end
 
